@@ -41,15 +41,10 @@ A infraestrutura está totalmente conteinerizada para garantir paridade com o am
 ### Passos de Execução
 
 1. Clone o repositório.
-
-2. Na raiz do projeto, execute o comando para construir a imagem do Worker e subir o Redis:
-
-```bash
-
-docker compose up --build
+2. Crie uma cópia do arquivo `.env.example` e renomeie para `.env` (preencha as senhas se necessário).
+3. Suba o banco de dados e o Redis em background com o comando:
+   ```bash
+   docker-compose up -d
 
 ```
-  
-3. O terminal exibirá os logs do Celery indicando que o worker está ready e escutando a fila no Redis (porta 6379).
-  
-> **Nota para Desenvolvimento:** O diretório local está mapeado como um volume (./:/app) no docker-compose.yml. Alterações nos arquivos .py refletirão no container, bastando reiniciar o serviço do worker se houver mudanças na estrutura das tasks do Celery.
+4. O PostgreSQL estará rodando na porta 5432 e o Redis na porta 6379.

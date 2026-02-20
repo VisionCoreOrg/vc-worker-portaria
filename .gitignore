@@ -1,0 +1,15 @@
+# =========================
+# Segurança & Ambientes
+# =========================
+.env
+.venv/
+venv/
+env/
+
+# =========================
+# IDEs & Sistema Operacional
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
