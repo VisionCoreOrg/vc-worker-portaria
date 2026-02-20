@@ -1,0 +1,26 @@
+services:
+  # Nosso Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: estacionamento_redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+  # Nosso Worker 01 - Portaria (OpenCV + OCR)
+  worker_portaria:
+    build: .
+    container_name: estacionamento_worker_portaria
+    environment:
+      # Configuração para o Celery saber onde encontrar o Redis na rede do Docker
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      # Mapeia a pasta local para dentro do container
+      # Permite editar o código Python sem precisar fazer um novo 'docker build'
+      - ./:/app
+    depends_on:
+      - redis
+    restart: on-failure
+    # Comando de inicialização do Celery consumindo a fila
+    command: celery -A tasks worker --loglevel=info
