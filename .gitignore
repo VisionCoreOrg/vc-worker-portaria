@@ -20,3 +20,10 @@ Thumbs.db
 data
 .jpg
 .png
+
+dataset/
+placas_binarizadas/
+placas_recortadas/
+dados_placas.json
+dados_placas_validados.json
+modelo_placas.pt
