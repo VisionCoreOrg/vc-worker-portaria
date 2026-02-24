@@ -20,7 +20,7 @@ A solução foi desenhada para não bloquear a API Core transacional. O fluxo fu
 
 ## 🛠️ Stack Tecnológica
   
-* **Linguagem:** Python 3.15.0a6-slim
+* **Linguagem:** Python
 
 * **Mensageria:** Redis
 
