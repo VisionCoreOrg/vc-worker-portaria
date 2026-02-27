@@ -17,6 +17,9 @@ Thumbs.db
 # =========================
 # Data 
 # =========================
+# Python Cache
+__pycache__/
+*.py[cod]
 
 .jpg
 .png
