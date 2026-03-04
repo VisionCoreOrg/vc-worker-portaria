@@ -5,6 +5,7 @@ import uuid
 import numpy as np
 from botocore.client import Config
 from src.config import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, BUCKET_NAME
+from datetime import datetime
 
 def obter_cliente_s3():
     """Configura e retorna o cliente do Boto3 apontando para o MinIO local"""
@@ -56,8 +57,9 @@ def upload_imagem_s3(imagem_numpy, string_placa):
     """
     cliente_s3 = obter_cliente_s3()
     
-    nome_arquivo = f"recortes/{string_placa}_{uuid.uuid4().hex[:8]}.jpg"
-    
+
+
+    nome_arquivo = f"placa_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.jpg"    
     sucesso, buffer_imagem = cv2.imencode('.jpg', imagem_numpy)
     if not sucesso:
         print("[STORAGE] Erro ao codificar a imagem para upload.")
