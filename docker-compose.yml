@@ -12,6 +12,23 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     restart: unless-stopped
+    networks:
+      - parking_global_net
+
+  worker:
+    build: .
+    container_name: vc_worker_portaria
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - minio
+    networks:
+      - parking_global_net
+
+networks:
+  parking_global_net:
+    external: true
 
 volumes:
   minio_data:

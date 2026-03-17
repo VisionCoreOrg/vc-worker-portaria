@@ -33,6 +33,7 @@ python-bidi==0.6.7
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
 PyYAML==6.0.3
+redis==5.2.1
 requests==2.32.5
 s3transfer==0.16.0
 scikit-image==0.26.0
