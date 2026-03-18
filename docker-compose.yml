@@ -1,33 +1,34 @@
 services:
-  db_portaria:
-    image: postgres:15
-    container_name: postgres_worker_portaria
-    restart: always
+  minio:
+    image: minio/minio:latest
+    container_name: visioncore_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
-      - portaria_pg_data:/var/lib/postgresql/data
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
     networks:
-      - parking_network
+      - parking_global_net
 
-  redis_portaria:
-    image: redis:7
-    container_name: redis_worker_portaria
-    restart: always
-    ports:
-      - "6379:6379"
+  worker:
+    build: .
+    container_name: vc_worker_portaria
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - minio
     networks:
-      - parking_network
-
-volumes:
-  portaria_pg_data:
-    name: portaria_pg_data
+      - parking_global_net
 
 networks:
-  parking_network:
-    name: parking_network
-    driver: bridge
+  parking_global_net:
+    external: true
+
+volumes:
+  minio_data:
