@@ -13,7 +13,7 @@ from src.services.redis_service import conectar_com_retry, aguardar_evento
 
 print("⏳ Inicializando modelos pesados de IA...")
 modelo_yolo = YOLO("models/modelo_placas.pt")
-leitor_ocr = easyocr.Reader(['pt', 'en'], gpu=False)
+leitor_ocr = easyocr.Reader(['pt', 'en'], gpu=True, model_storage_directory='models')
 print("✅ Modelos carregados!")
 
 

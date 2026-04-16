@@ -1,7 +1,7 @@
 services:
   minio:
     image: minio/minio:latest
-    container_name: visioncore_minio
+    container_name: visioncore-minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -23,6 +23,13 @@ services:
       - .env
     depends_on:
       - minio
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - parking_global_net
 

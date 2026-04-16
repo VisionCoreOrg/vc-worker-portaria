@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://visioncore_minio:9000")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://visioncore-minio:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ROOT_USER")
 MINIO_SECRET_KEY = os.getenv("MINIO_ROOT_PASSWORD")
 BUCKET_NAME = os.getenv("MINIO_BUCKET_NAME", "plate-bucket")
