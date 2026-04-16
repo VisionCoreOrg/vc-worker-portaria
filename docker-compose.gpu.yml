@@ -1,0 +1,27 @@
+# docker-compose.gpu.yml
+#
+# Override para rodar o worker com GPU NVIDIA.
+# Requer nvidia-container-toolkit instalado no host.
+#
+# Uso:
+#   docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+#
+# O build arg GPU_BUILD=nvidia instrui o Dockerfile a instalar
+# onnxruntime-gpu no lugar de onnxruntime. A variável de ambiente
+# GPU_PROVIDER=nvidia ativa o CUDAExecutionProvider em runtime.
+
+services:
+  worker:
+    build:
+      context: .
+      args:
+        GPU_BUILD: nvidia
+    environment:
+      GPU_PROVIDER: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

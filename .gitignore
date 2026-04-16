@@ -25,4 +25,5 @@ __pycache__/
 .jpg
 .png
 models/*.pt
+models/*.onnx
 dataset/*

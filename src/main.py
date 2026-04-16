@@ -1,19 +1,18 @@
 import time
 import json
 from datetime import datetime, timezone
-from ultralytics import YOLO
 import easyocr
 
-from src.config import CAMERA_ID
-from src.services.ia_service import detectar_placa
+from src.config import CAMERA_ID, USE_GPU
+from src.services.ia_service import carregar_modelo, detectar_placa
 from src.services.ocr_service import ler_texto_placa
 from src.services.storage_service import upload_imagem_s3, baixar_imagem_s3
 from src.services.api_service import enviar_para_api
 from src.services.redis_service import conectar_com_retry, aguardar_evento
 
 print("⏳ Inicializando modelos pesados de IA...")
-modelo_yolo = YOLO("models/modelo_placas.pt")
-leitor_ocr = easyocr.Reader(['pt', 'en'], gpu=True, model_storage_directory='models')
+modelo_yolo = carregar_modelo("models/modelo_placas.onnx")
+leitor_ocr = easyocr.Reader(['pt', 'en'], gpu=USE_GPU, model_storage_directory='models')
 print("✅ Modelos carregados!")
 
 

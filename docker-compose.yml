@@ -23,13 +23,6 @@ services:
       - .env
     depends_on:
       - minio
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - parking_global_net
 
