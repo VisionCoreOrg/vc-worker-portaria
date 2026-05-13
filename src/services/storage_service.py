@@ -75,7 +75,7 @@ def upload_imagem_s3(imagem_numpy, string_placa):
             ExtraArgs={'ContentType': 'image/jpeg'} 
         )
         
-        url_publica = f"{MINIO_ENDPOINT}/{BUCKET_NAME}/{nome_arquivo}"
+        url_publica = f"/storage/{BUCKET_NAME}/{nome_arquivo}"
         return url_publica
         
     except Exception as e:
