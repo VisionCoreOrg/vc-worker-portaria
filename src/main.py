@@ -40,24 +40,44 @@ def processar_evento(evento: dict) -> None:
         print("[WORKER] Nenhuma placa detectada na imagem.")
         return
 
-    texto_placa = ler_texto_placa(placa_crop, leitor_ocr)
-    if not texto_placa or len(texto_placa) != 7:
-        print(f"[WORKER] OCR falhou ou placa fora do padrão: '{texto_placa}'")
-        return
+    texto_placa, texto_bruto, img_processada = ler_texto_placa(placa_crop, leitor_ocr)
+    
+    # Determina o status e o motivo do filtro (se houver)
+    if not texto_placa:
+        status = "filtrado"
+        motivo_filtro = "OCR não identificou nenhum caractere"
+        placa_salvar = texto_bruto if texto_bruto else "—"
+    elif len(texto_placa) != 7:
+        status = "filtrado"
+        motivo_filtro = f"Placa fora do padrão (tamanho {len(texto_placa)}): '{texto_placa}'"
+        placa_salvar = texto_placa
+    else:
+        status = "sucesso"
+        motivo_filtro = None
+        placa_salvar = texto_placa
 
-    print(f"✅ Placa lida: {texto_placa} (Confiança YOLO: {confianca_yolo:.2f})")
+    print(f"[{status.upper()}] Placa lida: {placa_salvar} (Confiança YOLO: {confianca_yolo:.2f})")
 
-    url_recorte = upload_imagem_s3(placa_crop, texto_placa)
+    # Upload da imagem original recortada
+    url_recorte = upload_imagem_s3(placa_crop, placa_salvar)
     if not url_recorte:
-        print("[WORKER] Falha ao fazer upload do recorte no MinIO.")
+        print("[WORKER] Falha ao fazer upload do recorte colorido no MinIO.")
         return
+
+    # Upload da imagem binarizada (pré-processamento)
+    url_binarizada = upload_imagem_s3(img_processada, placa_salvar, sufixo="bin")
+    if not url_binarizada:
+        print("[WORKER] Falha ao fazer upload do recorte binarizado no MinIO.")
 
     payload = {
         "camera_id": camera_id_evento,
         "arquivo_origem": chave_arquivo,
-        "placa": texto_placa,
+        "placa": placa_salvar,
         "confianca": round(confianca_yolo, 4),
         "imagem_url": url_recorte,
+        "imagem_processada_url": url_binarizada,
+        "status": status,
+        "motivo_filtro": motivo_filtro,
         "data_hora": datetime.now(timezone.utc).isoformat(),
     }
 

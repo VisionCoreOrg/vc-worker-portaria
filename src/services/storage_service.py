@@ -50,16 +50,15 @@ def baixar_imagem_s3(chave_arquivo):
         print(f"[STORAGE] Erro ao baixar imagem '{chave_arquivo}': {e}")
         return None
 
-def upload_imagem_s3(imagem_numpy, string_placa):
+def upload_imagem_s3(imagem_numpy, string_placa, sufixo=""):
     """
     Recebe o crop da placa (NumPy Array) e a string do OCR.
     Faz o upload direto da memória para a pasta "recortes/" e retorna a URL pública.
     """
     cliente_s3 = obter_cliente_s3()
     
-
-
-    nome_arquivo = f"placa_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.jpg"    
+    suf = f"_{sufixo}" if sufixo else ""
+    nome_arquivo = f"placa_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{suf}.jpg"    
     sucesso, buffer_imagem = cv2.imencode('.jpg', imagem_numpy)
     if not sucesso:
         print("[STORAGE] Erro ao codificar a imagem para upload.")

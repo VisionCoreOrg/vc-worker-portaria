@@ -49,7 +49,7 @@ def corrigir_placa(texto_ocr):
     return placa_corrigida
 
 def ler_texto_placa(placa_crop, leitor_ocr):
-    """Recebe a imagem recortada e devolve apenas a string final."""
+    """Recebe a imagem recortada e devolve (texto_corrigido, texto_bruto, img_processada)."""
     img_processada = pre_processar_imagem(placa_crop)
     resultado_ocr = leitor_ocr.readtext(img_processada)
     
@@ -59,4 +59,4 @@ def ler_texto_placa(placa_crop, leitor_ocr):
         
     # Aplica a heurística
     texto_placa = corrigir_placa(texto_bruto)
-    return texto_placa
+    return texto_placa, texto_bruto, img_processada
