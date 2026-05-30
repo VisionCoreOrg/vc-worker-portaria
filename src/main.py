@@ -1,110 +1,87 @@
+from concurrent.futures import ThreadPoolExecutor
 import time
-import json
-from datetime import datetime, timezone
 import easyocr
 
-from src.config import CAMERA_ID, USE_GPU
-from src.services.ia_service import carregar_modelo, detectar_placa
-from src.services.ocr_service import ler_texto_placa
-from src.services.storage_service import upload_imagem_s3, baixar_imagem_s3
-from src.services.api_service import enviar_para_api
+from src.config import (
+    CAMERA_ID,
+    USE_GPU,
+    MINIO_ENDPOINT,
+    MINIO_ACCESS_KEY,
+    MINIO_SECRET_KEY,
+    BUCKET_NAME,
+    API_URL,
+)
+from src.core.logger import configurar_logger
+from src.core.use_cases import ProcessarEventoUseCase
+from src.services.ia_service import ONNXDetector
+from src.services.ocr_service import EasyOCRReader
+from src.services.storage_service import MinIOStorage
+from src.services.api_service import FastAPIClient
 from src.services.redis_service import conectar_com_retry, aguardar_evento
 
-print("⏳ Inicializando modelos pesados de IA...")
-modelo_yolo = carregar_modelo("models/modelo_placas.onnx")
-leitor_ocr = easyocr.Reader(['pt', 'en'], gpu=USE_GPU, model_storage_directory='models')
-print("✅ Modelos carregados!")
+logger = configurar_logger("VisionCoreWorker")
 
-
-def processar_evento(evento: dict) -> None:
-    """
-    Processa um único evento recebido da fila Redis.
-    Espera receber: { "path": "dataset/img.jpg", "camera_id": "...", "timestamp": "..." }
-    """
-    chave_arquivo = evento.get("path")
-    camera_id_evento = evento.get("camera_id", CAMERA_ID)
-
-    if not chave_arquivo:
-        print(f"[WORKER] Evento sem campo 'path', ignorado: {evento}")
-        return
-
-    print(f"\n🚗 Processando: {chave_arquivo} (câmera: {camera_id_evento})")
-
-    imagem_original = baixar_imagem_s3(chave_arquivo)
-    if imagem_original is None:
-        print("[WORKER] Falha ao baixar imagem, evento descartado.")
-        return
-
-    placa_crop, confianca_yolo = detectar_placa(imagem_original, modelo_yolo)
-    if placa_crop is None:
-        print("[WORKER] Nenhuma placa detectada na imagem.")
-        return
-
-    texto_placa, texto_bruto, img_processada = ler_texto_placa(placa_crop, leitor_ocr)
+def main():
+    logger.info("Inicializando VisionCore Worker Portaria.")
     
-    # Determina o status e o motivo do filtro (se houver)
-    if not texto_placa:
-        status = "filtrado"
-        motivo_filtro = "OCR não identificou nenhum caractere"
-        placa_salvar = texto_bruto if texto_bruto else "—"
-    elif len(texto_placa) != 7:
-        status = "filtrado"
-        motivo_filtro = f"Placa fora do padrão (tamanho {len(texto_placa)}): '{texto_placa}'"
-        placa_salvar = texto_placa
-    else:
-        status = "sucesso"
-        motivo_filtro = None
-        placa_salvar = texto_placa
-
-    print(f"[{status.upper()}] Placa lida: {placa_salvar} (Confiança YOLO: {confianca_yolo:.2f})")
-
-    # Upload da imagem original recortada
-    url_recorte = upload_imagem_s3(placa_crop, placa_salvar)
-    if not url_recorte:
-        print("[WORKER] Falha ao fazer upload do recorte colorido no MinIO.")
+    # 1. Inicialização de IA e Modelos pesados
+    logger.info("Carregando modelos de Deep Learning (YOLOv8 ONNX e EasyOCR).")
+    try:
+        detector = ONNXDetector("models/modelo_placas.onnx")
+        leitor_ocr_interno = easyocr.Reader(['pt', 'en'], gpu=USE_GPU, model_storage_directory='models')
+        ocr_reader = EasyOCRReader(leitor_ocr_interno)
+        logger.info("Modelos de Inteligência Artificial carregados com sucesso.")
+    except Exception as e:
+        logger.critical(f"Falha fatal ao carregar os modelos de IA: {e}")
         return
 
-    # Upload da imagem binarizada (pré-processamento)
-    url_binarizada = upload_imagem_s3(img_processada, placa_salvar, sufixo="bin")
-    if not url_binarizada:
-        print("[WORKER] Falha ao fazer upload do recorte binarizado no MinIO.")
+    # 2. Inicialização de Infraestrutura de Storage e API
+    storage = MinIOStorage(
+        endpoint_url=MINIO_ENDPOINT,
+        access_key=MINIO_ACCESS_KEY,
+        secret_key=MINIO_SECRET_KEY,
+        bucket_name=BUCKET_NAME
+    )
+    api_client = FastAPIClient(api_url=API_URL)
 
-    payload = {
-        "camera_id": camera_id_evento,
-        "arquivo_origem": chave_arquivo,
-        "placa": placa_salvar,
-        "confianca": round(confianca_yolo, 4),
-        "imagem_url": url_recorte,
-        "imagem_processada_url": url_binarizada,
-        "status": status,
-        "motivo_filtro": motivo_filtro,
-        "data_hora": datetime.now(timezone.utc).isoformat(),
-    }
+    # 3. Inicialização do Caso de Uso Core
+    use_case = ProcessarEventoUseCase(
+        detector=detector,
+        ocr_reader=ocr_reader,
+        storage=storage,
+        api_client=api_client,
+        camera_id_default=CAMERA_ID
+    )
 
-    enviar_para_api(payload)
+    # 4. Conexão ao Broker de Eventos (Redis)
+    try:
+        cliente_redis = conectar_com_retry()
+    except Exception as e:
+        logger.critical(f"Falha fatal ao conectar ao Broker Redis: {e}")
+        return
 
+    logger.info("Worker em modo escuta. Aguardando eventos da fila Redis.")
 
-def iniciar_loop_eventos() -> None:
-    """
-    Loop principal orientado a eventos.
-    Aguarda mensagens via BLPOP na fila Redis e processa cada uma.
-    """
-    cliente_redis = conectar_com_retry()
-    print("\n🎯 Worker em modo escuta. Aguardando eventos da fila Redis...\n")
-
-    while True:
+    # 5. Execução Concorrente via ThreadPoolExecutor
+    # 4 threads concorrentes aproveitam o paralelismo C++ do ONNX Runtime e evitam travar em I/O.
+    max_workers = 4
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="WorkerThread") as executor:
         try:
-            evento = aguardar_evento(cliente_redis, timeout=5)
-            if evento is None:
-                # Timeout normal — sem mensagens no momento
-                continue
-            processar_evento(evento)
-        except Exception as e:
-            print(f"[WORKER] ⚠️  Erro inesperado no loop: {e}")
-            print("[WORKER] Aguardando 3s antes de reiniciar o loop...")
-            time.sleep(3)
-
+            while True:
+                try:
+                    evento = aguardar_evento(cliente_redis, timeout=5)
+                    if evento is None:
+                        continue
+                    
+                    # Submete o processamento do evento para o pool de threads
+                    executor.submit(use_case.executar, evento)
+                except Exception as e:
+                    logger.error(f"Erro inesperado ao gerenciar fila no loop principal: {e}")
+                    time.sleep(2.0)
+        except KeyboardInterrupt:
+            logger.info("Sinal de interrupção recebido. Iniciando encerramento gracioso.")
+        finally:
+            logger.info("Aguardando finalização das threads de processamento ativas.")
 
 if __name__ == "__main__":
-    print("🚀 VisionCore Worker Portaria — Iniciado!")
-    iniciar_loop_eventos()
+    main()
