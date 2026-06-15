@@ -77,11 +77,19 @@ POST /api/vagas/registro
 
 ### ocr_service.py — OCR com Heurísticas BR
 
-Pré-processamento: grayscale → upscale 2x → blur → threshold Otsu
+Pré-processamento OpenCV (`pre_processar_imagem_ocr` em `src/utils/image_utils.py`), nesta ordem:
 
-Correções de posição (formato brasileiro `AAA0000` ou `AAA0A00`):
+1. **Grayscale** (`cv2.cvtColor` BGR→GRAY)
+2. **CLAHE** (`clipLimit=2.0`, `tileGridSize=(8,8)`) — equaliza contraste localmente, compensa iluminação/sombras
+3. **Upscale 2×** (`cv2.resize`, interpolação `INTER_CUBIC`)
+4. **Filtro bilateral** (`d=5`, `sigmaColor=75`, `sigmaSpace=75`) — suaviza ruído **preservando as bordas** dos caracteres (não é blur gaussiano)
+5. **Binarização de Otsu** (`cv2.threshold` com `THRESH_BINARY + THRESH_OTSU`)
+
+Correção de placa (`corrigir_placa` em `src/utils/text_utils.py`) — formato BR `AAA0000` (antigo) ou `AAA0A00` (Mercosul):
+- Remove não-alfanuméricos, faz `upper()`, e mantém os **últimos 7** caracteres se vier mais que isso
 - Posições 0-2 (letras): `{'0':'O', '1':'I', '2':'Z', '4':'A', '5':'S', '6':'G', '8':'B'}`
-- Posições 3, 5-6 (dígitos): `{'O':'0', 'I':'1', 'Z':'2', 'A':'4', 'S':'5', 'G':'6', 'B':'8', 'Q':'0', 'D':'0'}`
+- Posições 3, 5, 6 (dígitos): `{'O':'0', 'I':'1', 'Z':'2', 'A':'4', 'S':'5', 'G':'6', 'B':'8', 'Q':'0', 'D':'0'}`
+- **Posição 4 não é alterada** — pode ser letra (Mercosul) ou dígito (antigo), então forçar quebraria um dos formatos
 
 Validação: texto final deve ter exatamente 7 caracteres.
 
