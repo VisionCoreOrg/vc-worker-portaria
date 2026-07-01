@@ -1,7 +1,7 @@
 services:
   minio:
     image: minio/minio:latest
-    container_name: visioncore-minio
+    container_name: visioncore_minio
     ports:
       - "9000:9000"
       - "9001:9001"

@@ -115,7 +115,7 @@ docker-compose.gpu.yml      # Override para GPU NVIDIA
 
 | Variável | Descrição | Padrão |
 |---|---|---|
-| `MINIO_ENDPOINT` | URL do MinIO | `http://visioncore-minio:9000` |
+| `MINIO_ENDPOINT` | URL do MinIO | `http://visioncore_minio:9000` |
 | `MINIO_ROOT_USER` | Usuário MinIO | — |
 | `MINIO_ROOT_PASSWORD` | Senha MinIO | — |
 | `MINIO_BUCKET_NAME` | Bucket de imagens | `plate-bucket` |
