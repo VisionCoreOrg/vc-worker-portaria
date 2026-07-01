@@ -13,6 +13,7 @@ from src.config import (
 )
 from src.core.logger import configurar_logger
 from src.core.use_cases import ProcessarEventoUseCase
+from src.core.task_limiter import LimitedExecutor
 from src.services.ia_service import ONNXDetector
 from src.services.ocr_service import EasyOCRReader
 from src.services.storage_service import MinIOStorage
@@ -62,19 +63,22 @@ def main():
 
     logger.info("Worker em modo escuta. Aguardando eventos da fila Redis.")
 
-    # 5. Execução Concorrente via ThreadPoolExecutor
+    # 5. Execução Concorrente via ThreadPoolExecutor com backpressure
     # 4 threads concorrentes aproveitam o paralelismo C++ do ONNX Runtime e evitam travar em I/O.
+    # O LimitedExecutor segura o BRPOP quando o pool está cheio, evitando
+    # acumular em memória eventos já removidos do Redis.
     max_workers = 4
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="WorkerThread") as executor:
+        executor_limitado = LimitedExecutor(executor, max_in_flight=max_workers * 2)
         try:
             while True:
                 try:
                     evento = aguardar_evento(cliente_redis, timeout=5)
                     if evento is None:
                         continue
-                    
+
                     # Submete o processamento do evento para o pool de threads
-                    executor.submit(use_case.executar, evento)
+                    executor_limitado.submit(use_case.executar, evento)
                 except Exception as e:
                     logger.error(f"Erro inesperado ao gerenciar fila no loop principal: {e}")
                     time.sleep(2.0)
