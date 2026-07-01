@@ -20,21 +20,23 @@ def criar_cliente_redis() -> redis.Redis:
 
 def aguardar_evento(cliente: redis.Redis, timeout: int = 5) -> Optional[dict]:
     """
-    Bloqueia esperando por uma mensagem na fila Redis (BLPOP).
+    Bloqueia esperando por uma mensagem na fila Redis (BRPOP).
+    Consome pela cauda da lista: com o produtor publicando via LPUSH na
+    cabeça, o par LPUSH/BRPOP forma uma fila FIFO.
     Retorna o payload desserializado ou None se não houver mensagem no timeout.
     """
     try:
-        resultado = cliente.blpop(REDIS_QUEUE, timeout=timeout)
+        resultado = cliente.brpop(REDIS_QUEUE, timeout=timeout)
         if resultado is None:
             return None
-        
+
         _, mensagem_json = resultado
         return json.loads(mensagem_json)
     except json.JSONDecodeError as e:
         logger.warning(f"Mensagem inválida ignorada (JSON inválido): {e}")
         return None
     except redis.exceptions.RedisError as e:
-        logger.error(f"Erro ao interagir com o Redis (BLPOP): {e}")
+        logger.error(f"Erro ao interagir com o Redis (BRPOP): {e}")
         time.sleep(1.0)  # Pequeno delay antes de reatar para evitar loop rápido de erros
         return None
 

@@ -5,7 +5,7 @@ Worker de detecção e OCR de placas veiculares. Escuta uma fila Redis, baixa im
 ## Stack
 
 - **Linguagem**: Python 3.12
-- **Mensageria**: Redis (BLPOP)
+- **Mensageria**: Redis (LPUSH/BRPOP — fila FIFO)
 - **Detecção (IA)**: YOLOv8 via ONNX Runtime (suporte a CPU e GPU NVIDIA)
 - **OCR**: EasyOCR (PT + EN) com heurísticas para placas brasileiras
 - **Storage**: MinIO via boto3
@@ -16,12 +16,12 @@ Worker de detecção e OCR de placas veiculares. Escuta uma fila Redis, baixa im
 
 ```
 src/
-├── main.py                  # Loop principal: BLPOP → processar → enviar
+├── main.py                  # Loop principal: BRPOP → processar → enviar
 ├── config.py                # Carrega variáveis de ambiente
 └── services/
     ├── ia_service.py        # Inferência ONNX (YOLOv8), NMS, letterbox
     ├── ocr_service.py       # EasyOCR + pré-processamento + correção de placa BR
-    ├── redis_service.py     # Conexão Redis com retry, BLPOP, deserialização JSON
+    ├── redis_service.py     # Conexão Redis com retry, BRPOP, deserialização JSON
     ├── storage_service.py   # Download/upload MinIO via boto3
     └── api_service.py       # POST para /api/vagas/registro
 models/
@@ -38,7 +38,7 @@ scripts/
 | `REDIS_HOST` | `parking_redis` | Hostname do Redis (serviço Docker do parking-infra) |
 | `REDIS_PORT` | `6379` | Porta Redis |
 | `REDIS_PASSWORD` | — | Deve ser igual ao `REDIS_PASSWORD` do `parking-infra` |
-| `REDIS_QUEUE` | `camera:portaria:queue` | Nome da fila BLPOP |
+| `REDIS_QUEUE` | `camera:portaria:queue` | Nome da fila BRPOP |
 | `API_URL` | `http://api_core:8000/api/vagas/registro` | Endpoint de registro |
 | `CAMERA_ID` | `portaria_principal` | Identificador desta câmera |
 | `MINIO_ENDPOINT` | `http://visioncore_minio:9000` | URL do MinIO |

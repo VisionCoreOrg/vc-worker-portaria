@@ -10,7 +10,7 @@ Opera em modo **orientado a eventos**: aguarda mensagens via fila Redis e proces
 [vc-camera-mock ou câmera real]
         ↓ LPUSH  (camera:portaria:queue)
 [redis_broker — parking-infra]
-        ↓ BLPOP (bloqueante)
+        ↓ BRPOP (bloqueante)
 [Worker Portaria]
     → Baixa imagem do MinIO
     → ONNX Runtime detecta placa (modelo YOLOv8)
@@ -24,7 +24,7 @@ Opera em modo **orientado a eventos**: aguarda mensagens via fila Redis e proces
 | Componente | Tecnologia |
 |---|---|
 | Linguagem | Python 3.12 |
-| Mensageria | Redis (BLPOP) via `parking-infra` |
+| Mensageria | Redis (LPUSH/BRPOP — fila FIFO) via `parking-infra` |
 | IA / Detecção | YOLOv8 exportado para ONNX + ONNX Runtime |
 | OCR | EasyOCR |
 | Storage | MinIO (API compatível com S3) |
@@ -101,7 +101,7 @@ src/
 └── services/
     ├── ia_service.py       # Detecção YOLO via ONNX Runtime
     ├── ocr_service.py      # OCR EasyOCR
-    ├── redis_service.py    # Consumo da fila Redis (BLPOP)
+    ├── redis_service.py    # Consumo da fila Redis (BRPOP)
     ├── storage_service.py  # Upload/download MinIO
     └── api_service.py      # Envio para API Core
 models/
