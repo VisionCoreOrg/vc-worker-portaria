@@ -9,7 +9,7 @@ Opera em modo **orientado a eventos**: aguarda mensagens via fila Redis e proces
 ```
 [vc-camera-mock ou câmera real]
         ↓ LPUSH  (camera:portaria:queue)
-[redis_broker — parking-infra]
+[redis — compose local ou stack raiz]
         ↓ BRPOP (bloqueante)
 [Worker Portaria]
     → Baixa imagem do MinIO
@@ -24,7 +24,7 @@ Opera em modo **orientado a eventos**: aguarda mensagens via fila Redis e proces
 | Componente | Tecnologia |
 |---|---|
 | Linguagem | Python 3.12 |
-| Mensageria | Redis (LPUSH/BRPOP — fila FIFO) via `parking-infra` |
+| Mensageria | Redis (LPUSH/BRPOP — fila FIFO) (broker no próprio compose standalone ou no stack raiz) |
 | IA / Detecção | YOLOv8 exportado para ONNX + ONNX Runtime |
 | OCR | EasyOCR |
 | Storage | MinIO (API compatível com S3) |
@@ -32,23 +32,16 @@ Opera em modo **orientado a eventos**: aguarda mensagens via fila Redis e proces
 
 ## 🚀 Como Rodar
 
-> **Pré-requisito:** O `parking-infra` **deve estar rodando** antes deste serviço. Ele cria a rede `parking_global_net` e o broker Redis.
+> O compose standalone é autossuficiente (Redis e MinIO próprios). Para o sistema completo, use o compose raiz do workspace.
 
-### 1. Suba o parking-infra primeiro
-
-```bash
-cd ../parking-infra
-docker-compose up -d
-```
-
-### 2. Configure o `.env`
+### 1. Configure o `.env`
 
 ```bash
 cp .env.example .env
 # Edite .env com suas senhas de MinIO e Redis
 ```
 
-### 3. Prepare o modelo ONNX
+### 2. Prepare o modelo ONNX
 
 O worker utiliza o modelo no formato `.onnx`. Se você só possui o arquivo `.pt`, execute o script de exportação abaixo (requer apenas Docker, sem instalações adicionais):
 
@@ -61,30 +54,22 @@ Isso gera `models/modelo_placas.onnx` automaticamente usando a imagem oficial do
 
 > **Nota:** Os arquivos de modelo (`.pt` e `.onnx`) são ignorados pelo Git. Consulte o time ou o repositório de modelos para obter a versão mais recente.
 
-### 4. Suba o worker (CPU — padrão para todo o time)
+### 3. Suba o worker (CPU — padrão para todo o time)
 
 ```bash
 docker-compose up -d --build
 ```
 
 Isso sobe:
-- `visioncore_minio` — armazenamento de imagens (porta 9000 / console 9001)
-- `vc_worker_portaria` — worker em modo escuta da fila Redis, rodando inferência em CPU
+- `redis` — broker da fila (uso interno, sem porta publicada)
+- `minio` + `minio_init` — armazenamento de imagens e criação do bucket `plate-bucket` (uso interno, sem porta publicada)
+- `worker` — em modo escuta da fila Redis, rodando inferência em CPU
 
-### 4b. Rodar com GPU NVIDIA (opcional)
+### 3b. Rodar com GPU NVIDIA (opcional)
 
-Se você possui uma GPU NVIDIA e o `nvidia-container-toolkit` instalado no host, use o arquivo de override dedicado:
+GPU: requer build com o arg GPU_BUILD=nvidia e configuração de runtime NVIDIA — não há override de compose versionado.
 
-```bash
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
-```
-
-Esse override:
-- Compila a imagem com `onnxruntime-gpu` no lugar de `onnxruntime`
-- Passa `GPU_PROVIDER=nvidia` ao container, ativando o `CUDAExecutionProvider` e o GPU mode do EasyOCR
-- Reserva 1 GPU NVIDIA para o container
-
-### 5. Acompanhe os logs
+### 4. Acompanhe os logs
 
 ```bash
 docker-compose logs -f worker
@@ -108,7 +93,6 @@ models/
 ├── modelo_placas.pt        # Modelo original (ignorado pelo Git)
 └── modelo_placas.onnx      # Modelo exportado para inferência (ignorado pelo Git)
 docker-compose.yml          # Configuração padrão (CPU)
-docker-compose.gpu.yml      # Override para GPU NVIDIA
 ```
 
 ## 🔑 Variáveis de Ambiente

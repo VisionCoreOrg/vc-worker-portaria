@@ -1,34 +1,67 @@
+# Stack standalone do vc-worker-portaria — TESTE ISOLADO apenas.
+# Sobe o worker com Redis e MinIO próprios. Não há api-core neste stack:
+# o POST de registro falha com warning e o worker continua — comportamento
+# esperado no teste isolado. Para o sistema completo, use o compose raiz
+# do workspace (../docker-compose.dev.yml).
+
 services:
+  redis:
+    image: redis:7-alpine
+    restart: "no"
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD ausente no .env - copie de .env.example}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD ausente no .env - copie de .env.example}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "REDISCLI_AUTH=$${REDIS_PASSWORD} redis-cli ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   minio:
     image: minio/minio:latest
-    container_name: visioncore_minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    restart: "no"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    volumes:
-      - minio_data:/data
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER ausente no .env - copie de .env.example}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD ausente no .env - copie de .env.example}
     command: server /data --console-address ":9001"
-    restart: unless-stopped
-    networks:
-      - parking_global_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  minio_init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER ausente no .env - copie de .env.example}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD ausente no .env - copie de .env.example}
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+        mc mb --ignore-existing local/plate-bucket &&
+        mc anonymous set download local/plate-bucket &&
+        echo 'Bucket plate-bucket pronto.'
+      "
 
   worker:
     build: .
-    container_name: vc_worker_portaria
-    restart: unless-stopped
+    restart: "no"
     env_file:
       - .env
+    environment:
+      # Hostnames deste stack — pinados para o .env não quebrá-los.
+      # API_URL fica no .env: não há valor correto no standalone (falha
+      # de POST é tolerada pelo worker: log warning + continua).
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET_NAME: plate-bucket
+      REDIS_QUEUE: camera:portaria:queue
     depends_on:
-      - minio
-    networks:
-      - parking_global_net
-
-networks:
-  parking_global_net:
-    external: true
-
-volumes:
-  minio_data:
+      redis:
+        condition: service_healthy
+      minio_init:
+        condition: service_completed_successfully

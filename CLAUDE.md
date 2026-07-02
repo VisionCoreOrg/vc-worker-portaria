@@ -5,7 +5,7 @@ Worker de detecção e OCR de placas veiculares. Escuta uma fila Redis, baixa im
 ## Stack
 
 - **Linguagem**: Python 3.12
-- **Mensageria**: Redis (LPUSH/BRPOP — fila FIFO)
+- **Mensageria**: Redis (LPUSH/BRPOP — fila FIFO) (broker no próprio compose standalone ou no stack raiz)
 - **Detecção (IA)**: YOLOv8 via ONNX Runtime (suporte a CPU e GPU NVIDIA)
 - **OCR**: EasyOCR (PT + EN) com heurísticas para placas brasileiras
 - **Storage**: MinIO via boto3
@@ -113,13 +113,7 @@ O campo `path` é a chave do objeto no MinIO bucket.
 docker-compose up -d --build
 ```
 
-### GPU (NVIDIA CUDA)
-
-```bash
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
-```
-
-O `docker-compose.gpu.yml` passa `GPU_BUILD=nvidia` para o Dockerfile e habilita `deploy.resources.reservations` para GPU.
+GPU: requer build com o arg GPU_BUILD=nvidia e configuração de runtime NVIDIA — não há override de compose versionado.
 
 ### Exportar modelo para ONNX
 
@@ -148,10 +142,8 @@ python -m src.main
 - **Placa não detectada**: log + skip
 - **OCR inválido** (≠7 chars): log + skip
 - **API Core indisponível**: log warning + continua processando (não bloqueia fila)
-- **Worker restart**: `restart: unless-stopped` no compose
+- **Worker restart**: `restart: "no"` em dev (política alinhada ao stack raiz)
 
 ## Dependências do Serviço
 
-- `parking-infra`: Redis e rede `parking_global_net`
-- `vc-api-core`: endpoint de registro (falha tolerada)
-- MinIO: gerenciado localmente pelo `docker-compose.yml` deste serviço
+Standalone: nenhuma dependência externa — Redis e MinIO sobem no próprio compose (api-core ausente; POST tolerado com warning). Stack raiz: Redis/MinIO/api-core do compose raiz.
