@@ -12,11 +12,13 @@ class Detector(Protocol):
 
 
 class OCRReader(Protocol):
-    def ler_texto(self, crop: np.ndarray) -> Tuple[str, str, np.ndarray]:
+    def ler_texto(self, crop: np.ndarray) -> Tuple[str, np.ndarray]:
         """
-        Realiza pré-processamento OpenCV e leitura OCR sobre o recorte da placa.
+        Realiza pré-processamento e leitura OCR sobre o recorte da placa.
         Retorna:
-            (texto_corrigido, texto_bruto, imagem_binarizada_processada).
+            (texto_bruto, imagem_binarizada_processada).
+        A correção do padrão brasileiro é regra de domínio e vive no caso de
+        uso — o adapter devolve o texto cru.
         """
         ...
 

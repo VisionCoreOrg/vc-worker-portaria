@@ -5,6 +5,7 @@ import numpy as np
 
 from src.core.interfaces import Detector, OCRReader, StorageRepository, APIClient
 from src.core.logger import configurar_logger
+from src.core.text_utils import corrigir_placa
 
 logger = configurar_logger("ProcessarEventoUseCase")
 
@@ -53,10 +54,12 @@ class ProcessarEventoUseCase:
             logger.info(f"Nenhuma placa de veículo detectada na imagem '{chave_arquivo}'.")
             return
 
-        # 3. Inferência de OCR (EasyOCR) + Pré-processamento + Heurísticas BR
-        texto_placa, texto_bruto, img_binarizada = self.ocr_reader.ler_texto(placa_crop)
+        # 3. Inferência de OCR (EasyOCR) + Pré-processamento
+        texto_bruto, img_binarizada = self.ocr_reader.ler_texto(placa_crop)
 
-        # 4. Classificação das Regras de Domínio/Negócio (Status da Placa)
+        # 4. Regras de Domínio: correção do padrão brasileiro + classificação
+        texto_placa = corrigir_placa(texto_bruto)
+
         if not texto_placa:
             status = "filtrado"
             motivo_filtro = "OCR nao identificou nenhum caractere"

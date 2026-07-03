@@ -18,12 +18,20 @@ Worker de detecção e OCR de placas veiculares. Escuta uma fila Redis, baixa im
 src/
 ├── main.py                  # Loop principal: BLMOVE → processar → ack
 ├── config.py                # Carrega variáveis de ambiente
-└── services/
-    ├── ia_service.py        # Inferência ONNX (YOLOv8), NMS, letterbox
-    ├── ocr_service.py       # EasyOCR + pré-processamento + correção de placa BR
-    ├── redis_service.py     # Conexão Redis com retry, BLMOVE/ack, recuperação de órfãos
-    ├── storage_service.py   # Download/upload MinIO via boto3
-    └── api_service.py       # POST para /api/vagas/registro
+├── core/
+│   ├── interfaces.py        # Protocols: Detector, OCRReader, StorageRepository, APIClient
+│   ├── logger.py            # configurar_logger (cores ANSI, níveis, timestamp)
+│   ├── task_limiter.py      # LimitedExecutor — backpressure do pool
+│   ├── text_utils.py        # corrigir_placa — heurística de placa BR (domínio)
+│   └── use_cases.py         # ProcessarEventoUseCase
+├── services/
+│   ├── ia_service.py        # Inferência ONNX (YOLOv8), NMS, letterbox
+│   ├── ocr_service.py       # EasyOCR + pré-processamento (devolve texto cru)
+│   ├── redis_service.py     # Conexão Redis com retry, BLMOVE/ack, recuperação de órfãos
+│   ├── storage_service.py   # Download/upload MinIO via boto3
+│   └── api_service.py       # POST para /api/vagas/registro
+└── utils/
+    └── image_utils.py       # pré-processamento OpenCV para OCR
 models/
 ├── modelo_placas.pt         # Modelo YOLOv8 PyTorch (git-ignored)
 └── modelo_placas.onnx       # Modelo exportado ONNX (git-ignored, gerado por scripts/)
@@ -85,7 +93,7 @@ Pré-processamento OpenCV (`pre_processar_imagem_ocr` em `src/utils/image_utils.
 4. **Filtro bilateral** (`d=5`, `sigmaColor=75`, `sigmaSpace=75`) — suaviza ruído **preservando as bordas** dos caracteres (não é blur gaussiano)
 5. **Binarização de Otsu** (`cv2.threshold` com `THRESH_BINARY + THRESH_OTSU`)
 
-Correção de placa (`corrigir_placa` em `src/utils/text_utils.py`) — formato BR `AAA0000` (antigo) ou `AAA0A00` (Mercosul):
+Correção de placa (`corrigir_placa` em `src/core/text_utils.py`, aplicada pelo `ProcessarEventoUseCase` — o adapter OCR devolve texto cru) — formato BR `AAA0000` (antigo) ou `AAA0A00` (Mercosul):
 - Remove não-alfanuméricos, faz `upper()`, e mantém os **últimos 7** caracteres se vier mais que isso
 - Posições 0-2 (letras): `{'0':'O', '1':'I', '2':'Z', '4':'A', '5':'S', '6':'G', '8':'B'}`
 - Posições 3, 5, 6 (dígitos): `{'O':'0', 'I':'1', 'Z':'2', 'A':'4', 'S':'5', 'G':'6', 'B':'8', 'Q':'0', 'D':'0'}`
