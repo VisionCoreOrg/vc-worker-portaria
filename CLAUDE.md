@@ -5,7 +5,7 @@ Worker de detecção e OCR de placas veiculares. Escuta uma fila Redis, baixa im
 ## Stack
 
 - **Linguagem**: Python 3.12
-- **Mensageria**: Redis (LPUSH/BRPOP — fila FIFO) (broker no próprio compose standalone ou no stack raiz)
+- **Mensageria**: Redis (LPUSH/BLMOVE — fila FIFO com ack (lista de processamento)) (broker no próprio compose standalone ou no stack raiz)
 - **Detecção (IA)**: YOLOv8 via ONNX Runtime (suporte a CPU e GPU NVIDIA)
 - **OCR**: EasyOCR (PT + EN) com heurísticas para placas brasileiras
 - **Storage**: MinIO via boto3
@@ -16,12 +16,12 @@ Worker de detecção e OCR de placas veiculares. Escuta uma fila Redis, baixa im
 
 ```
 src/
-├── main.py                  # Loop principal: BRPOP → processar → enviar
+├── main.py                  # Loop principal: BLMOVE → processar → ack
 ├── config.py                # Carrega variáveis de ambiente
 └── services/
     ├── ia_service.py        # Inferência ONNX (YOLOv8), NMS, letterbox
     ├── ocr_service.py       # EasyOCR + pré-processamento + correção de placa BR
-    ├── redis_service.py     # Conexão Redis com retry, BRPOP, deserialização JSON
+    ├── redis_service.py     # Conexão Redis com retry, BLMOVE/ack, recuperação de órfãos
     ├── storage_service.py   # Download/upload MinIO via boto3
     └── api_service.py       # POST para /api/vagas/registro
 models/
@@ -38,7 +38,7 @@ scripts/
 | `REDIS_HOST` | `parking_redis` | Hostname do Redis (serviço Docker do parking-infra) |
 | `REDIS_PORT` | `6379` | Porta Redis |
 | `REDIS_PASSWORD` | — | Deve ser igual ao `REDIS_PASSWORD` do `parking-infra` |
-| `REDIS_QUEUE` | `camera:portaria:queue` | Nome da fila BRPOP |
+| `REDIS_QUEUE` | `camera:portaria:queue` | Nome da fila (consumida via BLMOVE) |
 | `API_URL` | `http://api_core:8000/api/vagas/registro` | Endpoint de registro |
 | `CAMERA_ID` | `portaria_principal` | Identificador desta câmera |
 | `MINIO_ENDPOINT` | `http://visioncore_minio:9000` | URL do MinIO |
@@ -105,6 +105,15 @@ Validação: texto final deve ter exatamente 7 caracteres.
 
 O campo `path` é a chave do objeto no MinIO bucket.
 
+### Fila confiável (ack)
+
+O consumo usa `BLMOVE camera:portaria:queue → camera:portaria:queue:processing`:
+o evento fica retido na lista de processamento até o ack (`LREM`) após o
+processamento — com sucesso ou falha tratada. No startup, eventos órfãos em
+`:processing` (sobras de crash) voltam para a fila. Semântica resultante:
+**at-least-once** — reprocessamento eventual é aceitável (a API tem regra de
+placa duplicada).
+
 ## Docker
 
 ### CPU (padrão)
@@ -137,12 +146,13 @@ python -m src.main
 ## Resiliência
 
 - **Redis**: retry automático com 10 tentativas e backoff de 3s
-- **Eventos inválidos**: campo `path` ausente → log + skip
+- **Eventos inválidos**: campo `path` ausente ou JSON inválido → ack + log + skip (não voltam para a fila)
 - **Falha de download**: log + skip (não bloqueia a fila)
 - **Placa não detectada**: log + skip
 - **OCR inválido** (≠7 chars): log + skip
 - **API Core indisponível**: log warning + continua processando (não bloqueia fila)
 - **Worker restart**: `restart: "no"` em dev (política alinhada ao stack raiz)
+- **Crash do worker**: eventos em voo ficam em `camera:portaria:queue:processing` e voltam à fila no próximo start
 
 ## Dependências do Serviço
 

@@ -18,9 +18,22 @@ from src.services.ia_service import ONNXDetector
 from src.services.ocr_service import EasyOCRReader
 from src.services.storage_service import MinIOStorage
 from src.services.api_service import FastAPIClient
-from src.services.redis_service import conectar_com_retry, aguardar_evento
+from src.services.redis_service import (
+    aguardar_evento,
+    conectar_com_retry,
+    confirmar_evento,
+    recuperar_eventos_orfaos,
+)
 
 logger = configurar_logger("VisionCoreWorker")
+
+def processar_e_confirmar(use_case, cliente_redis, evento, mensagem_bruta):
+    """Processa o evento e faz o ack (LREM) mesmo em caso de falha —
+    um evento com erro irrecuperável não deve voltar para a fila em loop."""
+    try:
+        use_case.executar(evento)
+    finally:
+        confirmar_evento(cliente_redis, mensagem_bruta)
 
 def main():
     logger.info("Inicializando VisionCore Worker Portaria.")
@@ -63,22 +76,28 @@ def main():
 
     logger.info("Worker em modo escuta. Aguardando eventos da fila Redis.")
 
+    # Sobra de crash anterior: eventos que estavam em processamento voltam à fila
+    recuperar_eventos_orfaos(cliente_redis)
+
     # 5. Execução Concorrente via ThreadPoolExecutor com backpressure
     # 4 threads concorrentes aproveitam o paralelismo C++ do ONNX Runtime e evitam travar em I/O.
-    # O LimitedExecutor segura o BRPOP quando o pool está cheio, evitando
-    # acumular em memória eventos já removidos do Redis.
+    # O LimitedExecutor segura o BLMOVE quando o pool está cheio; eventos em
+    # voo ficam retidos na lista :processing até o ack, então um crash não os perde.
     max_workers = 4
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="WorkerThread") as executor:
         executor_limitado = LimitedExecutor(executor, max_in_flight=max_workers * 2)
         try:
             while True:
                 try:
-                    evento = aguardar_evento(cliente_redis, timeout=5)
-                    if evento is None:
+                    resultado = aguardar_evento(cliente_redis, timeout=5)
+                    if resultado is None:
                         continue
+                    evento, mensagem_bruta = resultado
 
                     # Submete o processamento do evento para o pool de threads
-                    executor_limitado.submit(use_case.executar, evento)
+                    executor_limitado.submit(
+                        processar_e_confirmar, use_case, cliente_redis, evento, mensagem_bruta
+                    )
                 except Exception as e:
                     logger.error(f"Erro inesperado ao gerenciar fila no loop principal: {e}")
                     time.sleep(2.0)
