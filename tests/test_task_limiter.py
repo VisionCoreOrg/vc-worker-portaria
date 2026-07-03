@@ -3,6 +3,8 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from src.core.task_limiter import LimitedExecutor
 
 
@@ -38,3 +40,31 @@ def test_limite_e_liberado_apos_conclusao():
         limitado = LimitedExecutor(pool, max_in_flight=1)
         assert limitado.submit(lambda: 42).result(timeout=5) == 42
         assert limitado.submit(lambda: 43).result(timeout=5) == 43
+
+
+def test_limite_e_liberado_quando_submit_falha():
+    """Se o executor interno lança no submit, o semáforo deve ser devolvido —
+    senão o worker travaria para sempre após max_in_flight falhas."""
+
+    class ExecutorQueFalha:
+        def submit(self, fn, *args, **kwargs):
+            raise RuntimeError("pool encerrado")
+
+    limitado = LimitedExecutor(ExecutorQueFalha(), max_in_flight=1)
+
+    with pytest.raises(RuntimeError):
+        limitado.submit(lambda: None)
+
+    # Se o semáforo vazou, esta segunda chamada bloquearia em vez de lançar
+    segunda_chamada = threading.Event()
+
+    def tentar_de_novo():
+        try:
+            limitado.submit(lambda: None)
+        except RuntimeError:
+            pass
+        segunda_chamada.set()
+
+    t = threading.Thread(target=tentar_de_novo, daemon=True)
+    t.start()
+    assert segunda_chamada.wait(timeout=1), "semáforo não foi liberado após falha no submit"
