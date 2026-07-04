@@ -42,8 +42,12 @@ def aguardar_evento(cliente: redis.Redis, timeout: int = 5) -> Optional[Tuple[di
         return json.loads(mensagem_json), mensagem_json
     except json.JSONDecodeError as e:
         # Sem este LREM a mensagem inválida ficaria órfã em processing e
-        # voltaria para a fila a cada restart do worker.
-        cliente.lrem(FILA_PROCESSAMENTO, 1, mensagem_json)
+        # voltaria para a fila a cada restart do worker. Se o próprio LREM
+        # falhar por RedisError, loga e segue em vez de propagar.
+        try:
+            cliente.lrem(FILA_PROCESSAMENTO, 1, mensagem_json)
+        except redis.exceptions.RedisError as erro_lrem:
+            logger.error(f"Falha ao descartar mensagem inválida do processing: {erro_lrem}")
         logger.warning(f"Mensagem inválida descartada (JSON inválido): {e}")
         return None
     except redis.exceptions.RedisError as e:
@@ -69,8 +73,14 @@ def recuperar_eventos_orfaos(cliente: redis.Redis) -> int:
     Retorna o número de eventos devolvidos.
     """
     devolvidos = 0
-    while cliente.lmove(FILA_PROCESSAMENTO, REDIS_QUEUE, src="LEFT", dest="RIGHT") is not None:
-        devolvidos += 1
+    try:
+        while cliente.lmove(FILA_PROCESSAMENTO, REDIS_QUEUE, src="LEFT", dest="RIGHT") is not None:
+            devolvidos += 1
+    except redis.exceptions.RedisError as e:
+        # Queda transitória do Redis logo após o connect não pode matar o
+        # processo (restart:"no" no compose deixaria o worker Exited). Órfãos
+        # remanescentes voltam no próximo startup bem-sucedido.
+        logger.error(f"Erro ao recuperar eventos órfãos no startup (LMOVE): {e}")
     if devolvidos:
         logger.warning(f"{devolvidos} evento(s) órfão(s) devolvido(s) à fila após restart.")
     return devolvidos
