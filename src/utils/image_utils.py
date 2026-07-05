@@ -76,3 +76,28 @@ def pre_processar_imagem_ocr(img: np.ndarray) -> np.ndarray:
     )
 
     return binarizada
+
+
+def variantes_para_ocr(img: np.ndarray) -> list[tuple[str, np.ndarray]]:
+    """Gera variantes de pré-processamento do crop para OCR multi-variante.
+
+    A binarização de Otsu global destrói placas legíveis sob iluminação
+    irregular e escolhe a polaridade sozinha conforme o histograma; por isso
+    o OCR roda também na variante em cinza (sem threshold) e na binarizada
+    invertida — a melhor leitura é escolhida no domínio (escolher_leitura).
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray_clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+
+    largura = int(gray_clahe.shape[1] * 2)
+    altura = int(gray_clahe.shape[0] * 2)
+    ampliada = cv2.resize(gray_clahe, (largura, altura), interpolation=cv2.INTER_CUBIC)
+
+    suave = cv2.bilateralFilter(ampliada, d=5, sigmaColor=75, sigmaSpace=75)
+    _, otsu = cv2.threshold(suave, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    return [
+        ("cinza_clahe", suave),
+        ("otsu", otsu),
+        ("otsu_invertida", cv2.bitwise_not(otsu)),
+    ]
