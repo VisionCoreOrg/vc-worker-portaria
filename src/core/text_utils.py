@@ -105,3 +105,19 @@ def escolher_leitura(leituras: list[tuple[str, float]]) -> Decisao:
                 texto_bruto=texto,
             )
     return melhor
+
+
+def decidir_status(decisao: Decisao, conf_minima_sucesso: float) -> tuple[str, str | None]:
+    """Decide o status do registro a partir da leitura escolhida.
+
+    Regra única compartilhada entre o worker (ProcessarEventoUseCase) e o
+    harness de avaliação offline — se ela mudar, os dois mudam juntos.
+    Retorna (status, motivo_filtro).
+    """
+    if decisao.valida and decisao.confianca_ocr >= conf_minima_sucesso:
+        return "sucesso", None
+    if decisao.valida:
+        return "revisar", f"Confianca OCR baixa ({decisao.confianca_ocr:.2f})"
+    if decisao.placa:
+        return "filtrado", f"Nenhuma leitura em formato BR (melhor esforco: '{decisao.placa[:20]}')"
+    return "filtrado", "OCR nao identificou nenhum caractere"

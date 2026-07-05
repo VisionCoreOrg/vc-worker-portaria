@@ -4,6 +4,7 @@ from src.core.text_utils import (
     Decisao,
     Extracao,
     corrigir_janela,
+    decidir_status,
     eh_formato_valido,
     escolher_leitura,
     extrair_placa,
@@ -125,3 +126,27 @@ def test_nenhuma_valida_retorna_melhor_esforco():
     decisao = escolher_leitura([("F172", 0.9)])
     assert decisao.placa == "F172"
     assert not decisao.valida
+
+
+# --- decidir_status ----------------------------------------------------------
+
+def test_decidir_status_sucesso_com_confianca():
+    assert decidir_status(Decisao("ABC1234", True, 0.9, "ABC1234"), 0.5) == ("sucesso", None)
+
+
+def test_decidir_status_revisar_com_conf_baixa():
+    status, motivo = decidir_status(Decisao("ABC1234", True, 0.3, "ABC1234"), 0.5)
+    assert status == "revisar"
+    assert "0.30" in motivo
+
+
+def test_decidir_status_filtrado_com_melhor_esforco():
+    status, motivo = decidir_status(Decisao("F172", False, 0.9, "F172"), 0.5)
+    assert status == "filtrado"
+    assert "melhor esforco" in motivo
+
+
+def test_decidir_status_filtrado_sem_leitura():
+    assert decidir_status(Decisao("", False, 0.0, ""), 0.5) == (
+        "filtrado", "OCR nao identificou nenhum caractere"
+    )

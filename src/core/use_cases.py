@@ -5,7 +5,7 @@ import numpy as np
 
 from src.core.interfaces import Detector, OCRReader, StorageRepository, APIClient
 from src.core.logger import configurar_logger
-from src.core.text_utils import escolher_leitura
+from src.core.text_utils import decidir_status, escolher_leitura
 
 logger = configurar_logger("ProcessarEventoUseCase")
 
@@ -62,18 +62,7 @@ class ProcessarEventoUseCase:
         # 4. Regras de Domínio: melhor leitura + validação do formato BR
         decisao = escolher_leitura(leituras)
 
-        if decisao.valida and decisao.confianca_ocr >= self.conf_minima_sucesso:
-            status = "sucesso"
-            motivo_filtro = None
-        elif decisao.valida:
-            status = "revisar"
-            motivo_filtro = f"Confianca OCR baixa ({decisao.confianca_ocr:.2f})"
-        elif decisao.placa:
-            status = "filtrado"
-            motivo_filtro = f"Nenhuma leitura em formato BR (melhor esforco: '{decisao.placa[:20]}')"
-        else:
-            status = "filtrado"
-            motivo_filtro = "OCR nao identificou nenhum caractere"
+        status, motivo_filtro = decidir_status(decisao, self.conf_minima_sucesso)
 
         placa_salvar = decisao.placa if decisao.placa else "—"
 

@@ -20,7 +20,7 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.text_utils import escolher_leitura  # noqa: E402
+from src.core.text_utils import decidir_status, escolher_leitura  # noqa: E402
 
 
 def levenshtein(a: str, b: str) -> int:
@@ -66,12 +66,7 @@ def avaliar(detector, ocr_reader, gt: dict[str, str], images_dir: str, conf_mini
 
         leituras, _ = ocr_reader.ler_texto(crop)
         decisao = escolher_leitura(leituras)
-        if decisao.valida and decisao.confianca_ocr >= conf_minima_sucesso:
-            status = "sucesso"
-        elif decisao.valida:
-            status = "revisar"
-        else:
-            status = "filtrado"
+        status, _ = decidir_status(decisao, conf_minima_sucesso)
         resultados.append({
             "arquivo": arquivo,
             "gt": placa_real,
@@ -157,6 +152,7 @@ def main():
     destino = os.path.join(args.out, f"eval_{stamp}.json")
     with open(destino, "w", encoding="utf-8") as f:
         json.dump({"resumo": resumo, "resultados": resultados}, f, ensure_ascii=False, indent=2)
+        f.write("\n")
     print(f"\nResultado salvo em {destino}")
 
 
