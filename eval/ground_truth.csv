@@ -1,0 +1,44 @@
+# Ground truth do dataset de validação — exportado de visioncore.registros_placas
+# (placa_real anotada manualmente via dashboard) em 2026-07-05, deduplicado por arquivo.
+# Formato: arquivo,placa_real
+1.jpg,RHA0A01
+2.jpg,BCX9B81
+6.jpg,BEE4R22
+7.jpg,KYX9D98
+8.jpg,OOV0D55
+9.jpg,KYO8C16
+10.jpg,AUB5D38
+11.jpg,RFB4D54
+13.jpg,AXJ5A67
+14.jpg,IBF0A30
+15.jpg,PCZ6198
+16.jpg,FJS0D45
+17.jpg,AMJ9F58
+18.jpg,EDX3F56
+19.jpg,IRB7D15
+20.jpg,JDC7H09
+21.jpg,RBT8B30
+22.jpg,QHF9H65
+23.jpg,RLA0A13
+24.jpg,QEX7J17
+25.jpg,RLN9I92
+26.jpg,HLA0F38
+28.jpg,SEQ4G83
+30.jpg,EOW6B87
+35.jpg,BRA7S19
+36.jpg,BRA7S19
+38.jpg,POX4G21
+42.jpg,TEJ5G08
+43.jpg,TKM2A49
+# --- Imagens descartadas pelo pipeline (sem placa_real no banco) -------------
+# Revisadas e confirmadas manualmente pelo Felipe em 2026-07-05 contra as
+# imagens originais (única correção: 12.jpg AVZ5J5G → AVZ5J50).
+3.jpg,AKI5J19
+4.jpg,AUL1G66
+5.jpg,FAI7H26
+12.jpg,AVZ5J50
+31.jpg,FCO5A24
+32.jpg,FOM9H53
+33.jpg,FUD4G44
+34.jpg,FUH1G02
+41.jpg,SST9B72
