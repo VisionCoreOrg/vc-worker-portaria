@@ -5,7 +5,7 @@ import numpy as np
 
 from src.core.interfaces import Detector, OCRReader, StorageRepository, APIClient
 from src.core.logger import configurar_logger
-from src.core.text_utils import corrigir_placa
+from src.core.text_utils import escolher_leitura
 
 logger = configurar_logger("ProcessarEventoUseCase")
 
@@ -21,13 +21,15 @@ class ProcessarEventoUseCase:
         ocr_reader: OCRReader,
         storage: StorageRepository,
         api_client: APIClient,
-        camera_id_default: str = "camera_default"
+        camera_id_default: str = "camera_default",
+        conf_minima_sucesso: float = 0.5,
     ):
         self.detector = detector
         self.ocr_reader = ocr_reader
         self.storage = storage
         self.api_client = api_client
         self.camera_id_default = camera_id_default
+        self.conf_minima_sucesso = conf_minima_sucesso
 
     def executar(self, evento: dict) -> None:
         """
@@ -54,28 +56,30 @@ class ProcessarEventoUseCase:
             logger.info(f"Nenhuma placa de veículo detectada na imagem '{chave_arquivo}'.")
             return
 
-        # 3. Inferência de OCR (EasyOCR) + Pré-processamento
-        texto_bruto, img_binarizada = self.ocr_reader.ler_texto(placa_crop)
+        # 3. OCR multi-variante (adapter devolve leituras cruas candidatas)
+        leituras, img_binarizada = self.ocr_reader.ler_texto(placa_crop)
 
-        # 4. Regras de Domínio: correção do padrão brasileiro + classificação
-        texto_placa = corrigir_placa(texto_bruto)
+        # 4. Regras de Domínio: melhor leitura + validação do formato BR
+        decisao = escolher_leitura(leituras)
 
-        if not texto_placa:
-            status = "filtrado"
-            motivo_filtro = "OCR nao identificou nenhum caractere"
-            placa_salvar = texto_bruto if texto_bruto else "—"
-        elif len(texto_placa) != 7:
-            status = "filtrado"
-            motivo_filtro = f"Placa fora do padrao (tamanho {len(texto_placa)}): '{texto_placa}'"
-            placa_salvar = texto_placa
-        else:
+        if decisao.valida and decisao.confianca_ocr >= self.conf_minima_sucesso:
             status = "sucesso"
             motivo_filtro = None
-            placa_salvar = texto_placa
+        elif decisao.valida:
+            status = "revisar"
+            motivo_filtro = f"Confianca OCR baixa ({decisao.confianca_ocr:.2f})"
+        elif decisao.placa:
+            status = "filtrado"
+            motivo_filtro = f"Nenhuma leitura em formato BR (melhor esforco: '{decisao.placa[:20]}')"
+        else:
+            status = "filtrado"
+            motivo_filtro = "OCR nao identificou nenhum caractere"
+
+        placa_salvar = decisao.placa if decisao.placa else "—"
 
         logger.info(
             f"Filtro Aplicado -> [{status.upper()}] Placa final: {placa_salvar} "
-            f"(Confiança YOLO: {confianca_yolo:.2f})"
+            f"(YOLO: {confianca_yolo:.2f} | OCR: {decisao.confianca_ocr:.2f})"
         )
 
         # 5. Upload das mídias com resiliência de retentativas curtas
@@ -97,6 +101,7 @@ class ProcessarEventoUseCase:
             "arquivo_origem": chave_arquivo,
             "placa": placa_salvar,
             "confianca": round(float(confianca_yolo), 4),
+            "confianca_ocr": round(float(decisao.confianca_ocr), 4),
             "imagem_url": url_recorte if url_recorte else "",
             "imagem_processada_url": url_binarizada if url_binarizada else "",
             "status": status,
