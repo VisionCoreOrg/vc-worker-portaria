@@ -3,37 +3,59 @@ import numpy as np
 import easyocr
 
 from src.core.logger import configurar_logger
-from src.utils.image_utils import pre_processar_imagem_ocr
+from src.utils.image_utils import variantes_para_ocr
 
 logger = configurar_logger("EasyOCRReader")
 
+# Placas BR só contêm A-Z e 0-9; restringir o vocabulário do EasyOCR elimina
+# pontuação, minúsculas e Unicode (ex.: 'ª') na origem.
+ALLOWLIST_PLACA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+# Caixas com menos caracteres que isso são quase sempre ruído (parafusos,
+# moldura); participam da leitura concatenada mas não viram candidata própria.
+MIN_CHARS_CANDIDATA = 5
+
+
 class EasyOCRReader:
     """
-    Implementa o leitor OCR usando a biblioteca EasyOCR.
-    Conforme com o Protocol 'OCRReader'.
+    Implementa o leitor OCR usando a biblioteca EasyOCR sobre múltiplas
+    variantes de pré-processamento. Conforme com o Protocol 'OCRReader'.
     """
 
     def __init__(self, leitor: easyocr.Reader):
         self.leitor = leitor
 
-    def ler_texto(self, crop: np.ndarray) -> Tuple[str, np.ndarray]:
+    def ler_texto(self, crop: np.ndarray) -> Tuple[list, np.ndarray]:
         """
-        Realiza pré-processamento OpenCV e leitura OCR sobre o recorte da placa.
+        Executa OCR sobre as variantes do recorte e devolve leituras candidatas.
         Retorna:
-            (texto_bruto, imagem_binarizada).
+            (leituras, imagem_binarizada) — leituras é uma lista de tuplas
+            (texto_cru, confianca_ocr); a escolha da melhor leitura é regra
+            de domínio (escolher_leitura) e vive no caso de uso.
         """
-        # Pré-processamento OpenCV via Image Utils
-        img_binarizada = pre_processar_imagem_ocr(crop)
+        variantes = variantes_para_ocr(crop)
+        img_binarizada = dict(variantes)["otsu"]
 
-        # Leitura via EasyOCR
-        try:
-            resultado_ocr = self.leitor.readtext(img_binarizada)
-        except Exception as e:
-            logger.error(f"Falha ao realizar inferência no EasyOCR: {e}")
-            return "", img_binarizada
+        leituras: list[tuple[str, float]] = []
+        for nome, img in variantes:
+            try:
+                resultado = self.leitor.readtext(img, allowlist=ALLOWLIST_PLACA)
+            except Exception as e:
+                logger.error(f"Falha no EasyOCR na variante '{nome}': {e}")
+                continue
+            if not resultado:
+                continue
 
-        texto_bruto = ""
-        for (bbox, texto, conf_ocr) in resultado_ocr:
-            texto_bruto += texto
+            # O EasyOCR não garante ordem de leitura entre caixas — ordenar
+            # da esquerda para a direita antes de concatenar.
+            caixas = sorted(resultado, key=lambda r: min(p[0] for p in r[0]))
+            concatenado = "".join(texto for _, texto, _ in caixas)
+            conf_minima = min(float(conf) for _, _, conf in caixas)
+            leituras.append((concatenado, conf_minima))
 
-        return texto_bruto, img_binarizada
+            if len(caixas) > 1:
+                for _, texto, conf in caixas:
+                    if len(texto) >= MIN_CHARS_CANDIDATA:
+                        leituras.append((texto, float(conf)))
+
+        return leituras, img_binarizada

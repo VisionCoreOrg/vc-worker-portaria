@@ -51,33 +51,6 @@ def nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float = 0.45) -> l
     return mantidos
 
 
-def pre_processar_imagem_ocr(img: np.ndarray) -> np.ndarray:
-    """Aplica grayscaling, CLAHE, resizing 2x, bilateralFilter e binarização Otsu para melhorar OCR."""
-    # 1. Conversão para tons de cinza
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # 2. CLAHE para normalizar iluminação e sombras de forma adaptativa local
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray_clahe = clahe.apply(gray)
-
-    # 3. Ampliação da imagem (2x) para melhorar a leitura de caracteres pequenos
-    largura = int(gray_clahe.shape[1] * 2)
-    altura = int(gray_clahe.shape[0] * 2)
-    ampliada = cv2.resize(
-        gray_clahe, (largura, altura), interpolation=cv2.INTER_CUBIC
-    )
-
-    # 4. Filtro Bilateral para suavizar ruído e sujeira sem borrar as bordas dos caracteres
-    suave = cv2.bilateralFilter(ampliada, d=5, sigmaColor=75, sigmaSpace=75)
-
-    # 5. Binarização de Otsu
-    _, binarizada = cv2.threshold(
-        suave, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
-
-    return binarizada
-
-
 def variantes_para_ocr(img: np.ndarray) -> list[tuple[str, np.ndarray]]:
     """Gera variantes de pré-processamento do crop para OCR multi-variante.
 
