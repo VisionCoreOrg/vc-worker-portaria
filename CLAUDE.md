@@ -22,7 +22,7 @@ src/
 │   ├── interfaces.py        # Protocols: Detector, OCRReader, StorageRepository, APIClient
 │   ├── logger.py            # configurar_logger (cores ANSI, níveis, timestamp)
 │   ├── task_limiter.py      # LimitedExecutor — backpressure do pool
-│   ├── text_utils.py        # corrigir_placa — heurística de placa BR (domínio)
+│   ├── text_utils.py        # extrair_placa/escolher_leitura — janela deslizante + validação BR (domínio)
 │   └── use_cases.py         # ProcessarEventoUseCase
 ├── services/
 │   ├── ia_service.py        # Inferência ONNX (YOLOv8), NMS, letterbox
@@ -54,6 +54,7 @@ scripts/
 | `MINIO_ROOT_PASSWORD` | — | Credencial MinIO |
 | `MINIO_BUCKET_NAME` | `plate-bucket` | Bucket para recortes de placas |
 | `GPU_PROVIDER` | `none` | `none` (CPU) ou `nvidia` (CUDA) |
+| `OCR_CONF_MINIMA_SUCESSO` | `0.5` | Confiança mínima do OCR para status `sucesso`; abaixo disso (com formato válido) vira `revisar` |
 
 ## Pipeline de Processamento
 
@@ -66,7 +67,7 @@ MinIO: download imagem → NumPy array (OpenCV)
     ↓
 YOLOv8 ONNX: letterbox → inferência → NMS → recorte + confiança
     ↓
-EasyOCR: pré-processamento → leitura → heurística BR → 7 chars
+EasyOCR: 3 variantes de pré-processamento → leituras candidatas → escolher_leitura → status sucesso/revisar/filtrado
     ↓
 MinIO: upload recorte → URL pública
     ↓
@@ -85,21 +86,25 @@ POST /api/vagas/registro
 
 ### ocr_service.py — OCR com Heurísticas BR
 
-Pré-processamento OpenCV (`pre_processar_imagem_ocr` em `src/utils/image_utils.py`), nesta ordem:
+Pré-processamento multi-variante (`variantes_para_ocr` em `src/utils/image_utils.py`) — gera **3 variantes** a partir do mesmo recorte, pois a binarização de Otsu global sozinha destrói placas sob iluminação irregular e escolhe a polaridade sem garantia de acerto:
 
-1. **Grayscale** (`cv2.cvtColor` BGR→GRAY)
-2. **CLAHE** (`clipLimit=2.0`, `tileGridSize=(8,8)`) — equaliza contraste localmente, compensa iluminação/sombras
-3. **Upscale 2×** (`cv2.resize`, interpolação `INTER_CUBIC`)
-4. **Filtro bilateral** (`d=5`, `sigmaColor=75`, `sigmaSpace=75`) — suaviza ruído **preservando as bordas** dos caracteres (não é blur gaussiano)
-5. **Binarização de Otsu** (`cv2.threshold` com `THRESH_BINARY + THRESH_OTSU`)
+1. **Grayscale + CLAHE** (`clipLimit=2.0`, `tileGridSize=(8,8)`) — equaliza contraste local
+2. **Upscale 2×** (`cv2.resize`, `INTER_CUBIC`) + **filtro bilateral** (`d=5`, `sigmaColor=75`, `sigmaSpace=75`) — suaviza preservando bordas dos caracteres
+3. A partir daí, três variantes seguem para o OCR: `cinza_clahe` (sem threshold), `otsu` (`THRESH_BINARY + THRESH_OTSU`) e `otsu_invertida` (`cv2.bitwise_not` da anterior)
 
-Correção de placa (`corrigir_placa` em `src/core/text_utils.py`, aplicada pelo `ProcessarEventoUseCase` — o adapter OCR devolve texto cru) — formato BR `AAA0000` (antigo) ou `AAA0A00` (Mercosul):
-- Remove não-alfanuméricos, faz `upper()`, e mantém os **últimos 7** caracteres se vier mais que isso
-- Posições 0-2 (letras): `{'0':'O', '1':'I', '2':'Z', '4':'A', '5':'S', '6':'G', '8':'B'}`
-- Posições 3, 5, 6 (dígitos): `{'O':'0', 'I':'1', 'Z':'2', 'A':'4', 'S':'5', 'G':'6', 'B':'8', 'Q':'0', 'D':'0'}`
-- **Posição 4 não é alterada** — pode ser letra (Mercosul) ou dígito (antigo), então forçar quebraria um dos formatos
+`EasyOCRReader.ler_texto` (`src/services/ocr_service.py`) roda o EasyOCR em cada variante com **allowlist** restrita a `A-Z0-9` (elimina pontuação, minúsculas e Unicode na origem) e devolve uma lista de **leituras candidatas** `(texto_cru, confianca_ocr)` — inclui a concatenação de todas as caixas por variante e, quando há múltiplas caixas, cada caixa com ≥5 caracteres também vira candidata própria. Não escolhe a melhor leitura nem valida formato — isso é regra de domínio e vive no caso de uso.
 
-Validação: texto final deve ter exatamente 7 caracteres.
+Extração e escolha de placa (`src/core/text_utils.py`), aplicadas pelo `ProcessarEventoUseCase`:
+- `extrair_placa`: janela deslizante de 7 caracteres sobre o texto normalizado (upper + só `A-Z0-9`), testando o padrão único `^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$` (cobre `AAA0000` antigo e `AAA0A00` Mercosul — posição 4 aceita letra ou dígito e nunca é forçada). Substitui a heurística antiga de "últimos 7 chars", que desalinhava a leitura quando havia texto extra no crop (ex.: `BRASIL`, moldura de concessionária). Critério entre janelas: formato válido > menos correções aplicadas > mais à direita.
+  - Mapa de correção por posição: letras (posições 0-2) `{'0':'O', '1':'I', '2':'Z', '4':'A', '5':'S', '6':'G', '8':'B'}`; dígitos (posições 3, 5, 6) `{'O':'0', 'I':'1', 'Z':'2', 'A':'4', 'S':'5', 'G':'6', 'B':'8', 'Q':'0', 'D':'0'}`
+- `escolher_leitura`: entre as leituras candidatas do OCR, escolhe a melhor por extração em formato válido > menos correções > maior confiança do OCR.
+
+Status final no `ProcessarEventoUseCase`, conforme validade e `confianca_ocr` da leitura escolhida frente ao limiar `OCR_CONF_MINIMA_SUCESSO` (padrão `0.5`):
+- **`sucesso`**: formato válido e `confianca_ocr >= OCR_CONF_MINIMA_SUCESSO`
+- **`revisar`**: formato válido mas `confianca_ocr` abaixo do limiar
+- **`filtrado`**: nenhuma leitura em formato BR válido (ou OCR não identificou nenhum caractere)
+
+O payload enviado à API inclui `confianca_ocr` (confiança do OCR, separada de `confianca` = confiança do YOLO).
 
 ## Redis — Formato do Evento
 
@@ -157,7 +162,7 @@ python -m src.main
 - **Eventos inválidos**: campo `path` ausente ou JSON inválido → ack + log + skip (não voltam para a fila)
 - **Falha de download**: log + skip (não bloqueia a fila)
 - **Placa não detectada**: log + skip
-- **OCR inválido** (≠7 chars): log + skip
+- **Nenhuma leitura em formato BR válido**: status `filtrado` (registrado na API com `motivo_filtro`, não é skip silencioso)
 - **API Core indisponível**: log warning + continua processando (não bloqueia fila)
 - **Worker restart**: `restart: "no"` em dev (política alinhada ao stack raiz)
 - **Crash do worker**: eventos em voo ficam em `camera:portaria:queue:processing` e voltam à fila no próximo start
