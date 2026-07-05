@@ -10,6 +10,7 @@ from src.config import (
     MINIO_SECRET_KEY,
     BUCKET_NAME,
     API_URL,
+    OCR_CONF_MINIMA_SUCESSO,
 )
 from src.core.logger import configurar_logger
 from src.core.use_cases import ProcessarEventoUseCase
@@ -64,7 +65,8 @@ def main():
         ocr_reader=ocr_reader,
         storage=storage,
         api_client=api_client,
-        camera_id_default=CAMERA_ID
+        camera_id_default=CAMERA_ID,
+        conf_minima_sucesso=OCR_CONF_MINIMA_SUCESSO,
     )
 
     # 4. Conexão ao Broker de Eventos (Redis)

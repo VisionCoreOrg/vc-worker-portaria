@@ -25,3 +25,10 @@ REDIS_QUEUE = os.getenv("REDIS_QUEUE", "camera:portaria:queue")
 # ===========================================================================
 GPU_PROVIDER = os.getenv("GPU_PROVIDER", "none").lower()
 USE_GPU = GPU_PROVIDER == "nvidia"
+
+# ===========================================================================
+# OCR — Fase 1 do plano de confiabilidade
+# Leituras em formato BR válido com confiança abaixo deste limiar recebem
+# status "revisar" (fila de anotação humana) em vez de "sucesso".
+# ===========================================================================
+OCR_CONF_MINIMA_SUCESSO = float(os.getenv("OCR_CONF_MINIMA_SUCESSO", "0.5"))

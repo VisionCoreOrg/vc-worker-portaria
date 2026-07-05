@@ -1,7 +1,7 @@
 """Harness de avaliação offline do pipeline de extração de placas.
 
-Roda o pipeline atual (YOLOv8 ONNX → pré-processamento → EasyOCR →
-corrigir_placa) sobre o dataset local com ground truth anotado e reporta
+Roda o pipeline atual (YOLOv8 ONNX → pré-processamento multi-variante →
+EasyOCR → escolher_leitura) sobre o dataset local com ground truth anotado e reporta
 acurácia estrita, CER e distribuição de erros — sem Redis/MinIO/API.
 
 Uso (dentro do container do worker, a partir de /app):
@@ -20,7 +20,7 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.text_utils import corrigir_placa  # noqa: E402
+from src.core.text_utils import escolher_leitura  # noqa: E402
 
 
 def levenshtein(a: str, b: str) -> int:
@@ -47,7 +47,7 @@ def carregar_ground_truth(caminho: str) -> dict[str, str]:
     return gt
 
 
-def avaliar(detector, ocr_reader, gt: dict[str, str], images_dir: str) -> list[dict]:
+def avaliar(detector, ocr_reader, gt: dict[str, str], images_dir: str, conf_minima_sucesso: float = 0.5) -> list[dict]:
     resultados = []
     for arquivo, placa_real in sorted(gt.items(), key=lambda kv: kv[0]):
         caminho = os.path.join(images_dir, arquivo)
@@ -64,17 +64,23 @@ def avaliar(detector, ocr_reader, gt: dict[str, str], images_dir: str) -> list[d
             })
             continue
 
-        texto_bruto, _ = ocr_reader.ler_texto(crop)
-        placa = corrigir_placa(texto_bruto)
-        status = "sucesso" if len(placa) == 7 else "filtrado"
+        leituras, _ = ocr_reader.ler_texto(crop)
+        decisao = escolher_leitura(leituras)
+        if decisao.valida and decisao.confianca_ocr >= conf_minima_sucesso:
+            status = "sucesso"
+        elif decisao.valida:
+            status = "revisar"
+        else:
+            status = "filtrado"
         resultados.append({
             "arquivo": arquivo,
             "gt": placa_real,
-            "bruto": texto_bruto,
-            "lido": placa,
+            "bruto": decisao.texto_bruto,
+            "lido": decisao.placa,
             "conf_yolo": round(float(conf_yolo), 3),
+            "conf_ocr": round(float(decisao.confianca_ocr), 3),
             "status": status,
-            "dist": levenshtein(placa, placa_real),
+            "dist": levenshtein(decisao.placa, placa_real),
         })
     return resultados
 
@@ -83,7 +89,7 @@ def imprimir_relatorio(resultados: list[dict]) -> dict:
     validos = [r for r in resultados if "erro" not in r]
     n = len(validos)
     acertos = [r for r in validos if r["lido"] == r["gt"]]
-    sucessos = [r for r in validos if r["status"] == "sucesso"]
+    sucessos = [r for r in validos if r["status"] in ("sucesso", "revisar")]
     acertos_sucesso = [r for r in sucessos if r["lido"] == r["gt"]]
     cer = sum(r["dist"] / max(len(r["gt"]), 1) for r in validos) / n if n else 0.0
 
@@ -93,18 +99,20 @@ def imprimir_relatorio(resultados: list[dict]) -> dict:
         dist_erros["0" if d == 0 else "1" if d == 1 else "2" if d == 2 else "3+"] += 1
 
     largura = max(len(r["arquivo"]) for r in validos) if validos else 10
-    print(f"\n{'arquivo':<{largura}}  {'gt':<8} {'lido':<8} {'bruto':<12} {'conf':<6} {'dist':<4} status")
+    print(f"\n{'arquivo':<{largura}}  {'gt':<8} {'lido':<8} {'bruto':<14} {'yolo':<6} {'ocr':<6} {'dist':<4} status")
     print("-" * (largura + 50))
     for r in validos:
         marca = "OK " if r["lido"] == r["gt"] else "ERR"
         print(f"{r['arquivo']:<{largura}}  {r['gt']:<8} {str(r['lido']):<8} "
-              f"{str(r.get('bruto', ''))[:12]:<12} {r['conf_yolo']:<6} {r['dist']:<4} {marca} {r['status']}")
+              f"{str(r.get('bruto', ''))[:14]:<14} {r['conf_yolo']:<6} {r.get('conf_ocr', '—'):<6} "
+              f"{r['dist']:<4} {marca} {r['status']}")
 
     resumo = {
         "n_imagens": n,
         "acuracia_estrita": round(len(acertos) / n, 4) if n else 0.0,
         "acuracia_entre_sucessos": round(len(acertos_sucesso) / len(sucessos), 4) if sucessos else 0.0,
         "n_sucessos": len(sucessos),
+        "n_revisar": sum(1 for r in validos if r["status"] == "revisar"),
         "n_filtrados": sum(1 for r in validos if r["status"] == "filtrado"),
         "n_sem_deteccao": sum(1 for r in validos if r["status"] == "sem_deteccao"),
         "cer_medio": round(cer, 4),
@@ -115,6 +123,7 @@ def imprimir_relatorio(resultados: list[dict]) -> dict:
     print(f"Acurácia estrita (geral): {resumo['acuracia_estrita']:.1%}  ({len(acertos)}/{n})")
     print(f"Acurácia entre sucessos:  {resumo['acuracia_entre_sucessos']:.1%}  ({len(acertos_sucesso)}/{len(sucessos)})")
     print(f"Filtrados: {resumo['n_filtrados']}  ·  Sem detecção: {resumo['n_sem_deteccao']}")
+    print(f"Revisar: {resumo['n_revisar']}")
     print(f"CER médio (Levenshtein/len): {resumo['cer_medio']:.1%}")
     print(f"Distribuição de erros por placa: {dist_erros}")
     return resumo
@@ -130,7 +139,7 @@ def main():
 
     import easyocr  # import tardio: pesado
 
-    from src.config import USE_GPU
+    from src.config import USE_GPU, OCR_CONF_MINIMA_SUCESSO
     from src.services.ia_service import ONNXDetector
     from src.services.ocr_service import EasyOCRReader
 
@@ -140,7 +149,7 @@ def main():
 
     gt = carregar_ground_truth(args.gt)
     print(f"Avaliando {len(gt)} imagens de {args.images_dir} contra {args.gt}")
-    resultados = avaliar(detector, ocr_reader, gt, args.images_dir)
+    resultados = avaliar(detector, ocr_reader, gt, args.images_dir, conf_minima_sucesso=OCR_CONF_MINIMA_SUCESSO)
     resumo = imprimir_relatorio(resultados)
 
     os.makedirs(args.out, exist_ok=True)
