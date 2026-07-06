@@ -50,8 +50,13 @@ class EasyOCRReader:
             # da esquerda para a direita antes de concatenar.
             caixas = sorted(resultado, key=lambda r: min(p[0] for p in r[0]))
             concatenado = "".join(texto for _, texto, _ in caixas)
-            conf_minima = min(float(conf) for _, _, conf in caixas)
-            leituras.append((concatenado, conf_minima))
+            # A confiança da leitura concatenada deve refletir o corpo da placa,
+            # não o mínimo global (caixas de ruído como "BRASIL"/moldura deprimem
+            # leituras corretas para 'revisar'). Usamos a conf da MAIOR caixa por
+            # nº de caracteres — a que provavelmente é a placa; empate → primeira.
+            caixa_maior = max(caixas, key=lambda r: len(r[1]))
+            conf_leitura = float(caixa_maior[2])
+            leituras.append((concatenado, conf_leitura))
 
             if len(caixas) > 1:
                 for _, texto, conf in caixas:

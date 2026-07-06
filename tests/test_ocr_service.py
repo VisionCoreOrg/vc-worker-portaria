@@ -37,7 +37,8 @@ def test_concatena_caixas_em_ordem_esquerda_direita():
     # Regressão do caso real 24.jpg: caixas fora de ordem viravam 'J17...QEX7'
     fake = FakeLeitor([[_caixa(100, "J17", 0.8), _caixa(0, "QEX7", 0.9)], [], []])
     leituras, _ = EasyOCRReader(fake).ler_texto(_crop())
-    assert ("QEX7J17", 0.8) in leituras  # confiança = mínima entre as caixas
+    # confiança = a da MAIOR caixa (QEX7, 4 chars, conf 0.9), não o mínimo global
+    assert ("QEX7J17", 0.9) in leituras
 
 
 def test_caixas_grandes_viram_candidatas_individuais():
@@ -45,7 +46,8 @@ def test_caixas_grandes_viram_candidatas_individuais():
     leituras, _ = EasyOCRReader(fake).ler_texto(_crop())
     assert ("ABC1234", 0.9) in leituras
     assert ("BRASIL", 0.5) in leituras
-    assert ("BRASILABC1234", 0.5) in leituras
+    # concatenação herda a conf da MAIOR caixa (ABC1234, 7 chars, 0.9), não 0.5
+    assert ("BRASILABC1234", 0.9) in leituras
 
 
 def test_caixa_unica_nao_duplica_candidata():
