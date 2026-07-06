@@ -11,6 +11,7 @@ from src.config import (
     BUCKET_NAME,
     API_URL,
     OCR_CONF_MINIMA_SUCESSO,
+    MODELO_PLACAS_PATH,
 )
 from src.core.logger import configurar_logger
 from src.core.use_cases import ProcessarEventoUseCase
@@ -42,7 +43,7 @@ def main():
     # 1. Inicialização de IA e Modelos pesados
     logger.info("Carregando modelos de Deep Learning (YOLOv8 ONNX e EasyOCR).")
     try:
-        detector = ONNXDetector("models/modelo_placas.onnx")
+        detector = ONNXDetector(MODELO_PLACAS_PATH)
         leitor_ocr_interno = easyocr.Reader(['pt', 'en'], gpu=USE_GPU, model_storage_directory='models')
         ocr_reader = EasyOCRReader(leitor_ocr_interno)
         logger.info("Modelos de Inteligência Artificial carregados com sucesso.")
