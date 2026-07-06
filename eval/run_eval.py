@@ -86,6 +86,7 @@ def imprimir_relatorio(resultados: list[dict]) -> dict:
     acertos = [r for r in validos if r["lido"] == r["gt"]]
     sucessos = [r for r in validos if r["status"] in ("sucesso", "revisar")]
     acertos_sucesso = [r for r in sucessos if r["lido"] == r["gt"]]
+    sucessos_errados = [r for r in validos if r["status"] == "sucesso" and r["lido"] != r["gt"]]
     cer = sum(r["dist"] / max(len(r["gt"]), 1) for r in validos) / n if n else 0.0
 
     dist_erros = {"0": 0, "1": 0, "2": 0, "3+": 0}
@@ -109,6 +110,7 @@ def imprimir_relatorio(resultados: list[dict]) -> dict:
         "n_sucessos": len(sucessos),
         "n_revisar": sum(1 for r in validos if r["status"] == "revisar"),
         "n_filtrados": sum(1 for r in validos if r["status"] == "filtrado"),
+        "n_sucessos_errados": len(sucessos_errados),
         "n_sem_deteccao": sum(1 for r in validos if r["status"] == "sem_deteccao"),
         "cer_medio": round(cer, 4),
         "distribuicao_erros": dist_erros,
@@ -119,6 +121,7 @@ def imprimir_relatorio(resultados: list[dict]) -> dict:
     print(f"Acurácia entre sucessos:  {resumo['acuracia_entre_sucessos']:.1%}  ({len(acertos_sucesso)}/{len(sucessos)})")
     print(f"Filtrados: {resumo['n_filtrados']}  ·  Sem detecção: {resumo['n_sem_deteccao']}")
     print(f"Revisar: {resumo['n_revisar']}")
+    print(f"Sucessos errados (status=sucesso, lido!=gt): {resumo['n_sucessos_errados']}")
     print(f"CER médio (Levenshtein/len): {resumo['cer_medio']:.1%}")
     print(f"Distribuição de erros por placa: {dist_erros}")
     return resumo
