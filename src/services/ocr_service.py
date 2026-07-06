@@ -54,6 +54,10 @@ class EasyOCRReader:
             # não o mínimo global (caixas de ruído como "BRASIL"/moldura deprimem
             # leituras corretas para 'revisar'). Usamos a conf da MAIOR caixa por
             # nº de caracteres — a que provavelmente é a placa; empate → primeira.
+            # Premissa: a maior caixa é o corpo da placa. Falha se a placa for
+            # fragmentada em caixas < que uma palavra de ruído mais longa — aí a
+            # concatenação herda a conf do ruído. Inerte no dataset atual (placa
+            # de 7 chars > "BRASIL"); reavaliar com voto multi-frame na Fase 2.
             caixa_maior = max(caixas, key=lambda r: len(r[1]))
             conf_leitura = float(caixa_maior[2])
             leituras.append((concatenado, conf_leitura))
