@@ -128,6 +128,27 @@ def test_nenhuma_valida_retorna_melhor_esforco():
     assert not decisao.valida
 
 
+def test_consenso_vence_menos_correcoes():
+    # Placa correta lida em 2 variantes (2 candidatas idênticas) vence a placa
+    # de 1 candidata mesmo que esta tenha menos correções e maior confiança.
+    decisao = escolher_leitura([
+        ("OOV0D55", 0.4),   # correta, aparece 2x → consenso 2
+        ("OOV0D55", 0.4),
+        ("VOD5519", 0.9),   # 1 candidata, alta confiança
+    ])
+    assert decisao.placa == "OOV0D55"
+
+
+def test_consenso_nao_promove_invalida_sobre_valida():
+    # Uma placa INVÁLIDA repetida não vence uma válida única (valida domina).
+    decisao = escolher_leitura([
+        ("ZZ", 0.9), ("ZZ", 0.9),   # inválidas, 2x
+        ("ABC1234", 0.3),           # válida, 1x
+    ])
+    assert decisao.placa == "ABC1234"
+    assert decisao.valida
+
+
 # --- decidir_status ----------------------------------------------------------
 
 def test_decidir_status_sucesso_com_confianca():

@@ -85,17 +85,26 @@ def extrair_placa(texto_ocr: str) -> Extracao:
 def escolher_leitura(leituras: list[tuple[str, float]]) -> Decisao:
     """Escolhe a melhor leitura entre candidatas (texto_cru, confianca_ocr).
 
-    Critério: extração em formato válido > menos correções > maior
-    confiança do OCR.
+    Critério: extração em formato válido > mais ocorrências da mesma placa
+    (consenso entre variantes) > menos correções > maior confiança do OCR.
     """
     if not leituras:
         return Decisao(placa="", valida=False, confianca_ocr=0.0, texto_bruto="")
 
+    # Pré-computa a extração de cada candidata e conta ocorrências da MESMA
+    # placa válida entre todas as candidatas — o consenso na prática: a mesma
+    # placa lida em 2 variantes gera 2 candidatas que extraem igual.
+    extraidas = [extrair_placa(texto) for texto, _ in leituras]
+    ocorrencias: dict[str, int] = {}
+    for ext in extraidas:
+        if ext.valida:
+            ocorrencias[ext.placa] = ocorrencias.get(ext.placa, 0) + 1
+
     melhor_chave = None
     melhor = None
-    for texto, confianca in leituras:
-        extracao = extrair_placa(texto)
-        chave = (extracao.valida, -extracao.correcoes, confianca)
+    for (texto, confianca), extracao in zip(leituras, extraidas):
+        n_ocorrencias = ocorrencias.get(extracao.placa, 0) if extracao.valida else 0
+        chave = (extracao.valida, n_ocorrencias, -extracao.correcoes, confianca)
         if melhor_chave is None or chave > melhor_chave:
             melhor_chave = chave
             melhor = Decisao(
