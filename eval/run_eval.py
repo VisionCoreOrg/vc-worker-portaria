@@ -131,7 +131,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--images-dir", default="dataset")
     parser.add_argument("--gt", default="eval/ground_truth.csv")
-    parser.add_argument("--model", default="models/modelo_placas.onnx")
+    parser.add_argument("--model", default="models/modelo_placas_yasir.onnx")
     parser.add_argument("--out", default="eval/results", help="pasta para salvar o JSON do run")
     args = parser.parse_args()
 

@@ -33,8 +33,10 @@ src/
 └── utils/
     └── image_utils.py       # pré-processamento OpenCV para OCR
 models/
-├── modelo_placas.pt         # Modelo YOLOv8 PyTorch (git-ignored)
-└── modelo_placas.onnx       # Modelo exportado ONNX (git-ignored, gerado por scripts/)
+├── modelo_placas_yasir.pt   # Detector PADRÃO — YOLOv8n, HF yasirfaizahmed (Apache-2.0), git-ignored
+├── modelo_placas_yasir.onnx # Detector PADRÃO exportado (git-ignored, gerado por scripts/)
+├── modelo_placas.pt         # Detector anterior (Koushim) — mantido como fallback, git-ignored
+└── modelo_placas.onnx       # Detector anterior exportado (git-ignored)
 scripts/
 └── export_model.sh          # Converte .pt → .onnx via Docker (sem instalar PyTorch local)
 ```
@@ -55,6 +57,7 @@ scripts/
 | `MINIO_BUCKET_NAME` | `plate-bucket` | Bucket para recortes de placas |
 | `GPU_PROVIDER` | `none` | `none` (CPU) ou `nvidia` (CUDA) |
 | `OCR_CONF_MINIMA_SUCESSO` | `0.5` | Confiança mínima do OCR para status `sucesso`; abaixo disso (com formato válido) vira `revisar` |
+| `MODELO_PLACAS_PATH` | `models/modelo_placas_yasir.onnx` | Caminho do modelo de detecção (ONNX). Trocável sem alterar código (ex.: fallback chain da Fase 2). |
 
 ## Pipeline de Processamento
 
@@ -78,8 +81,9 @@ POST /api/vagas/registro
 
 ### ia_service.py — Detecção YOLOv8 ONNX
 
+- Modelo padrão: **`yasirfaizahmed/license-plate-object-detection`** (YOLOv8n, Apache-2.0), configurável via `MODELO_PLACAS_PATH`. Substituiu o modelo Koushim anterior por ganho medido no gate de 43 imagens: estrita **46,5% vs 37,2%**, CER **20,9% vs 29,6%**, sucessos-errados **3 vs 7**, sem_deteccao **2 vs 5** (evidência em `relatorios/2026-07-05-confiabilidade-lpr/` e `eval/results/`). Koushim mantido como fallback.
 - Input: imagem 640×640 com letterbox (mantém proporção, adiciona padding)
-- Output ONNX: `[1, 5, 8400]` → extrai (cx, cy, w, h, conf)
+- Output ONNX: `[1, 5, 8400]` → extrai (cx, cy, w, h, conf) — mesma arquitetura YOLOv8n, `detectar()` inalterado
 - Confiança mínima: `0.5`
 - NMS IoU threshold: `0.45`
 - Retorna: recorte da placa + score de confiança
@@ -137,12 +141,18 @@ docker-compose up -d --build
 
 GPU: requer build com o arg GPU_BUILD=nvidia e configuração de runtime NVIDIA — não há override de compose versionado.
 
-### Exportar modelo para ONNX
+### Obter e exportar o modelo de detecção
+
+Os pesos são git-ignored. Para reconstruir o detector padrão num clone novo (requer apenas Docker):
 
 ```bash
-# Requer apenas Docker instalado (sem PyTorch local)
-bash scripts/export_model.sh
-# Gera models/modelo_placas.onnx a partir de models/modelo_placas.pt
+# 1. Baixar o peso do detector padrão (Apache-2.0)
+curl -L -o models/modelo_placas_yasir.pt \
+  https://huggingface.co/yasirfaizahmed/license-plate-object-detection/resolve/main/best.pt
+
+# 2. Exportar para ONNX (imagem ultralytics via Docker, sem PyTorch local)
+bash scripts/export_model.sh                 # → models/modelo_placas_yasir.onnx
+bash scripts/export_model.sh modelo_placas   # fallback Koushim → models/modelo_placas.onnx
 ```
 
 ## Desenvolvimento Local

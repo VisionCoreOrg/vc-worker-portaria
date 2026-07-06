@@ -2,19 +2,28 @@
 # =============================================================================
 # scripts/export_model.sh
 #
-# Exporta o modelo YOLOv8 (.pt) para o formato ONNX (.onnx) usando a imagem
+# Exporta um modelo YOLOv8 (.pt) para o formato ONNX (.onnx) usando a imagem
 # oficial do Ultralytics via Docker — sem precisar instalar nada localmente.
 #
 # Uso:
 #   chmod +x scripts/export_model.sh
-#   ./scripts/export_model.sh
+#   ./scripts/export_model.sh [nome_do_modelo]   # sem .pt; default: modelo_placas_yasir
 #
-# O arquivo gerado será: models/modelo_placas.onnx
+# Exemplos:
+#   ./scripts/export_model.sh                     # models/modelo_placas_yasir.pt → .onnx (detector padrão)
+#   ./scripts/export_model.sh modelo_placas       # models/modelo_placas.pt → .onnx (Koushim, fallback)
+#
+# O detector padrão (modelo_placas_yasir) vem de:
+#   https://huggingface.co/yasirfaizahmed/license-plate-object-detection (Apache-2.0)
+# Baixe o peso antes de exportar:
+#   curl -L -o models/modelo_placas_yasir.pt \
+#     https://huggingface.co/yasirfaizahmed/license-plate-object-detection/resolve/main/best.pt
 # =============================================================================
 
 set -e
 
-MODELO_PT="models/modelo_placas.pt"
+NOME_MODELO="${1:-modelo_placas_yasir}"
+MODELO_PT="models/${NOME_MODELO}.pt"
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPTS_DIR")"
 
@@ -29,6 +38,6 @@ echo "🔄 Exportando $MODELO_PT para ONNX..."
 docker run --rm \
     -v "$PROJECT_DIR/models:/models" \
     ultralytics/ultralytics:latest \
-    yolo export model=/models/modelo_placas.pt format=onnx imgsz=640
+    yolo export model="/models/${NOME_MODELO}.pt" format=onnx imgsz=640
 
-echo "✅ Exportado com sucesso: models/modelo_placas.onnx"
+echo "✅ Exportado com sucesso: models/${NOME_MODELO}.onnx"

@@ -32,3 +32,13 @@ USE_GPU = GPU_PROVIDER == "nvidia"
 # status "revisar" (fila de anotação humana) em vez de "sucesso".
 # ===========================================================================
 OCR_CONF_MINIMA_SUCESSO = float(os.getenv("OCR_CONF_MINIMA_SUCESSO", "0.5"))
+
+# ===========================================================================
+# Detecção — modelo YOLOv8 (ONNX) usado pelo ONNXDetector.
+# Default: yasirfaizahmed/license-plate-object-detection (Apache-2.0), que no
+# gate de 43 imagens supera o modelo anterior (Koushim) — estrita 46,5% vs
+# 37,2%, CER 20,9% vs 29,6%, sucessos-errados 3 vs 7, sem_deteccao 2 vs 5.
+# Configurável para permitir troca de detector (ex.: fallback chain da Fase 2)
+# sem alterar código. Ver relatorios/2026-07-05-confiabilidade-lpr/.
+# ===========================================================================
+MODELO_PLACAS_PATH = os.getenv("MODELO_PLACAS_PATH", "models/modelo_placas_yasir.onnx")
